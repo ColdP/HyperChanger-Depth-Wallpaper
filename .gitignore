@@ -1,0 +1,96 @@
+# Gradle files
+.gradle/
+.gradle-home/
+.kotlin/
+**/build/
+
+# Local configuration
+local.properties
+
+# IDE files
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Build outputs and profiling data
+*.apk
+*.aab
+*.hprof
+output-metadata.json
+
+# Keystores and service configuration
+*.jks
+*.keystore
+google-services.json
+
+# Logs and OS files
+*.log
+hs_err_pid*.log
+.DS_Store
+Thumbs.db
+
+# Local APK inspection and reverse-engineering workspaces
+.api-inspect/
+.jadx*/
+.miuix-inspect/
+.plugin-jadx/
+.target-analysis/
+analysis/
+hyperos4-glass-blur-main/
+/.jadx.zip
+
+# Temporary reverse-engineering and device-test files
+/.tmp/
+/.java-tmp/
+/.tmp-*
+/device-*.txt
+/custom-my-device/
+/RELEASE_NOTES*.md
+
+# Device captures and extracted system packages kept only for local analysis
+/*.png
+/*.jpg
+/*.jpeg
+/*.xml
+/*.apk
+/*.aar
+/*.resources.txt
+/*.svg
+
+# Local reverse-engineering projects, dumps, and generated output
+/apk-output/
+/apk-output-final/
+/lockscreen-weather-extracted/
+/PowerShell */
+/null/
+/work/
+/.anr-latest.txt
+/.AGENTS.md
+/nav.md
+/AGENTS.md
+/*.dex
+/*.db
+/*.tmp
+/.codex-window.xml
+/.phone_2609012300.svg
+/.android-home/
+/.build-tmp/
+/.reverse-tmp/
+/.build-runtime/
+/.gradle-user-home/
+/build-tmp/
+/DOCK_ANIMATION_HANDOFF.md
+/.dsh-vision-router/
+
+# Handoff documents are kept locally and out of version control
+/HANDOFF/
+
+# Python inspection caches
+__pycache__/
+*.py[cod]
+
+# Independent repository excludes local toolchains and vendored sources
+/third_party/
+
