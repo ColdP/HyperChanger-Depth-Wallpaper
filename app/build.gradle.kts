@@ -17,7 +17,12 @@ val buildDate = LocalDate.now().toString().replace('-', '.')
 android {
     namespace = "btm.m.os4.systemuihook"
     compileSdk = 37
-    ndkPath = rootProject.file(".build-tmp/android-ndk-r28c").absolutePath
+    val bundledNdk = rootProject.file(".build-tmp/android-ndk-r28c")
+    if (bundledNdk.isDirectory) {
+        ndkPath = bundledNdk.absolutePath
+    } else {
+        ndkVersion = "28.2.13676358"
+    }
 
 
     defaultConfig {
