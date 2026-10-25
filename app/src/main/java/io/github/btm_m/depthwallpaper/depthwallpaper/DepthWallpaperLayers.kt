@@ -18,13 +18,20 @@ import kotlin.math.sqrt
 class DepthLayers(
     val mask: Bitmap,
     val background: Bitmap,
+    val backgroundDepth: Bitmap,
     val subjectDepth: Float,
     val fromAlpha: Boolean,
 )
 
+internal class BackgroundPlate(val image: Bitmap, val depth: Bitmap) {
+    fun recycle() {
+        image.recycle()
+        depth.recycle()
+    }
+}
+
 object DepthLayerBuilder {
     private const val LAYER_LONG_SIDE = 1440
-    private const val INPAINT_SCALE = 4
 
     fun build(
         source: Bitmap,
@@ -79,7 +86,7 @@ object DepthLayerBuilder {
         } else {
             .65f
         }
-        val background = buildBackground(sourceLayer, mask, width, height)
+        val background = buildBackground(sourceLayer, mask, depthValues, width, height)
         val maskBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val maskPixels = IntArray(pixelCount)
         for (index in 0 until pixelCount) {
@@ -89,7 +96,7 @@ object DepthLayerBuilder {
         maskBitmap.setPixels(maskPixels, 0, width, 0, 0, width, height)
         if (sourceLayer !== source) sourceLayer.recycle()
         if (depthLayer !== depth) depthLayer.recycle()
-        return DepthLayers(maskBitmap, background, subjectDepth, alphaMask != null)
+        return DepthLayers(maskBitmap, background.image, background.depth, subjectDepth, alphaMask != null)
     }
 
     private fun scaleMatting(source: Bitmap, image: Bitmap, width: Int, height: Int, preserveEdges: Boolean): FloatArray? {
@@ -246,145 +253,38 @@ object DepthLayerBuilder {
         }
     }
 
-    /**
-     * Diffuses surrounding colours into the subject area at a reduced resolution, then blends
-     * the filled plate with the untouched background region.
-     */
-    private fun buildBackground(sourceLayer: Bitmap, mask: FloatArray, width: Int, height: Int): Bitmap {
+    /** Repairs stored projects using their existing masks; model inference is not needed. */
+    internal fun rebuildBackground(source: Bitmap, mask: Bitmap, depth: Bitmap): BackgroundPlate {
+        val width = mask.width
+        val height = mask.height
+        val image = if (source.width == width && source.height == height) source else source.scale(width, height)
+        val scaledDepth = if (depth.width == width && depth.height == height) depth else depth.scale(width, height)
+        try {
+            val pixels = IntArray(width * height)
+            mask.getPixels(pixels, 0, width, 0, 0, width, height)
+            val values = FloatArray(pixels.size) { (pixels[it] and 255) / 255f }
+            scaledDepth.getPixels(pixels, 0, width, 0, 0, width, height)
+            val depths = FloatArray(pixels.size) { (pixels[it] and 255) / 255f }
+            return buildBackground(image, values, depths, width, height)
+        } finally {
+            if (image !== source) image.recycle()
+            if (scaledDepth !== depth) scaledDepth.recycle()
+        }
+    }
+
+    private fun buildBackground(sourceLayer: Bitmap, mask: FloatArray, depth: FloatArray, width: Int, height: Int): BackgroundPlate {
         val removalMask = MattingEdges.backgroundRemovalMask(
             mask, width, height, (max(width, height) / 240).coerceIn(4, 8),
         )
-        val smallWidth = max(2, width / INPAINT_SCALE)
-        val smallHeight = max(2, height / INPAINT_SCALE)
-        val small = sourceLayer.scale(smallWidth, smallHeight)
-        val smallPixels = IntArray(smallWidth * smallHeight)
-        small.getPixels(smallPixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
-        small.recycle()
-        val smallCount = smallWidth * smallHeight
-        val smallMask = FloatArray(smallCount)
-        for (y in 0 until smallHeight) {
-            val sourceY = (y.toFloat() / smallHeight * height).toInt().coerceIn(0, height - 1)
-            for (x in 0 until smallWidth) {
-                val sourceX = (x.toFloat() / smallWidth * width).toInt().coerceIn(0, width - 1)
-                smallMask[y * smallWidth + x] = removalMask[sourceY * width + sourceX]
-            }
+        val pixels = IntArray(width * height)
+        sourceLayer.getPixels(pixels, 0, width, 0, 0, width, height)
+        val filled = BackgroundInpaint.fill(pixels, depth, removalMask, width, height)
+        val background = Bitmap.createBitmap(filled.pixels, width, height, Bitmap.Config.ARGB_8888)
+        for (i in pixels.indices) {
+            val value = (filled.depth[i] * 255f).roundToInt().coerceIn(0, 255)
+            pixels[i] = (0xff shl 24) or (value shl 16) or (value shl 8) or value
         }
-        val r = FloatArray(smallCount)
-        val g = FloatArray(smallCount)
-        val b = FloatArray(smallCount)
-        val known = BooleanArray(smallCount)
-        for (index in 0 until smallCount) {
-            val color = smallPixels[index]
-            r[index] = ((color shr 16) and 0xFF).toFloat()
-            g[index] = ((color shr 8) and 0xFF).toFloat()
-            b[index] = (color and 0xFF).toFloat()
-            known[index] = smallMask[index] < .01f
-        }
-        val knownCount = known.count { it }
-        if (knownCount == 0) {
-            val copy = sourceLayer.copy(Bitmap.Config.ARGB_8888, false)
-            return copy ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        }
-        repeat(26) {
-            for (y in 0 until smallHeight) {
-                val row = y * smallWidth
-                for (x in 0 until smallWidth) {
-                    val index = row + x
-                    if (known[index]) continue
-                    var sumR = 0f
-                    var sumG = 0f
-                    var sumB = 0f
-                    var weight = 0f
-                    for (dy in -1..1) {
-                        val ny = y + dy
-                        if (ny !in 0 until smallHeight) continue
-                        for (dx in -1..1) {
-                            val nx = x + dx
-                            if (nx !in 0 until smallWidth) continue
-                            val nIndex = ny * smallWidth + nx
-                            if (!known[nIndex]) continue
-                            val w = if (dx == 0 && dy == 0) 3f else 1f
-                            sumR += r[nIndex] * w
-                            sumG += g[nIndex] * w
-                            sumB += b[nIndex] * w
-                            weight += w
-                        }
-                    }
-                    if (weight > 0f) {
-                        r[index] = sumR / weight
-                        g[index] = sumG / weight
-                        b[index] = sumB / weight
-                        known[index] = true
-                    }
-                }
-            }
-            for (y in smallHeight - 1 downTo 0) {
-                val row = y * smallWidth
-                for (x in smallWidth - 1 downTo 0) {
-                    val index = row + x
-                    if (known[index]) continue
-                    var sumR = 0f
-                    var sumG = 0f
-                    var sumB = 0f
-                    var weight = 0f
-                    for (dy in -1..1) {
-                        val ny = y + dy
-                        if (ny !in 0 until smallHeight) continue
-                        for (dx in -1..1) {
-                            val nx = x + dx
-                            if (nx !in 0 until smallWidth) continue
-                            val nIndex = ny * smallWidth + nx
-                            if (!known[nIndex]) continue
-                            val w = if (dx == 0 && dy == 0) 3f else 1f
-                            sumR += r[nIndex] * w
-                            sumG += g[nIndex] * w
-                            sumB += b[nIndex] * w
-                            weight += w
-                        }
-                    }
-                    if (weight > 0f) {
-                        r[index] = sumR / weight
-                        g[index] = sumG / weight
-                        b[index] = sumB / weight
-                        known[index] = true
-                    }
-                }
-            }
-        }
-        val filled = Bitmap.createBitmap(smallWidth, smallHeight, Bitmap.Config.ARGB_8888)
-        val filledPixels = IntArray(smallCount)
-        for (index in 0 until smallCount) {
-            filledPixels[index] = (0xFF shl 24) or
-                (r[index].roundToInt().coerceIn(0, 255) shl 16) or
-                (g[index].roundToInt().coerceIn(0, 255) shl 8) or
-                b[index].roundToInt().coerceIn(0, 255)
-        }
-        filled.setPixels(filledPixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
-        val upscaled = filled.scale(width, height)
-        filled.recycle()
-        val upPixels = IntArray(width * height)
-        upscaled.getPixels(upPixels, 0, width, 0, 0, width, height)
-        upscaled.recycle()
-        val sourcePixels = IntArray(width * height)
-        sourceLayer.getPixels(sourcePixels, 0, width, 0, 0, width, height)
-        val output = IntArray(width * height)
-        for (index in output.indices) {
-            val t = removalMask[index]
-            val foreground = sourcePixels[index]
-            val fill = upPixels[index]
-            val fr = (foreground shr 16) and 0xFF
-            val fg = (foreground shr 8) and 0xFF
-            val fb = foreground and 0xFF
-            val br = (fill shr 16) and 0xFF
-            val bg = (fill shr 8) and 0xFF
-            val bb = fill and 0xFF
-            val rOut = (fr + (br - fr) * t).roundToInt().coerceIn(0, 255)
-            val gOut = (fg + (bg - fg) * t).roundToInt().coerceIn(0, 255)
-            val bOut = (fb + (bb - fb) * t).roundToInt().coerceIn(0, 255)
-            output[index] = (0xFF shl 24) or (rOut shl 16) or (gOut shl 8) or bOut
-        }
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        bitmap.setPixels(output, 0, width, 0, 0, width, height)
-        return bitmap
+        val backgroundDepth = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        return BackgroundPlate(background, backgroundDepth)
     }
 }

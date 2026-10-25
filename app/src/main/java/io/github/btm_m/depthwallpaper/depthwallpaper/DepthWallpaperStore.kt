@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.util.AtomicFile
 import androidx.core.graphics.scale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,7 +66,9 @@ class DepthWallpaperStore(context: Context) {
 
     fun maskFile(id: String): File = File(File(root, id), "mask.png")
 
-    fun backgroundFile(id: String): File = File(File(root, id), "background.jpg")
+    fun backgroundFile(id: String): File = File(File(root, id), "background-v2.jpg")
+
+    private fun backgroundDepthFile(id: String): File = File(File(root, id), "background-depth-v2.png")
 
     fun thumbnailFile(id: String): File = File(File(root, id), "thumb.jpg")
 
@@ -94,8 +97,11 @@ class DepthWallpaperStore(context: Context) {
         FileOutputStream(File(folder, "mask.png")).use { output ->
             layers.mask.compress(Bitmap.CompressFormat.PNG, 100, output)
         }
-        FileOutputStream(File(folder, "background.jpg")).use { output ->
+        FileOutputStream(backgroundFile(id)).use { output ->
             layers.background.compress(Bitmap.CompressFormat.JPEG, 90, output)
+        }
+        FileOutputStream(backgroundDepthFile(id)).use { output ->
+            check(layers.backgroundDepth.compress(Bitmap.CompressFormat.PNG, 100, output))
         }
         writeThumbnail(source, File(folder, "thumb.jpg"), layers.fromAlpha)
         val project = DepthWallpaperProject(
@@ -135,6 +141,39 @@ class DepthWallpaperStore(context: Context) {
     fun loadMask(id: String): Bitmap? = BitmapFactory.decodeFile(maskFile(id).absolutePath)
 
     fun loadBackground(id: String): Bitmap? = BitmapFactory.decodeFile(backgroundFile(id).absolutePath)
+
+    /** A versioned depth plate is also the marker for the new background fill. */
+    internal fun loadBackgroundPlate(id: String, original: Bitmap, mask: Bitmap, depth: Bitmap): BackgroundPlate {
+        val depthPlate = BitmapFactory.decodeFile(backgroundDepthFile(id).absolutePath)
+        if (depthPlate != null) {
+            val image = loadBackground(id)
+            if (image != null && image.width == mask.width && image.height == mask.height &&
+                depthPlate.width == mask.width && depthPlate.height == mask.height) {
+                return BackgroundPlate(image, depthPlate)
+            }
+            image?.recycle()
+            depthPlate.recycle()
+        }
+        val repaired = DepthLayerBuilder.rebuildBackground(original, mask, depth)
+        // Cache only derived files. Original photo, subject mask and model selection stay intact.
+        runCatching {
+            writeBackgroundCache(repaired.image, backgroundFile(id), Bitmap.CompressFormat.JPEG, 90)
+            writeBackgroundCache(repaired.depth, backgroundDepthFile(id), Bitmap.CompressFormat.PNG, 100)
+        }.onFailure { android.util.Log.w("DepthWallpaperStore", "Background repair cache failed", it) }
+        return repaired
+    }
+
+    private fun writeBackgroundCache(bitmap: Bitmap, target: File, format: Bitmap.CompressFormat, quality: Int) {
+        val atomic = AtomicFile(target)
+        val stream = atomic.startWrite()
+        try {
+            check(bitmap.compress(format, quality, stream))
+            atomic.finishWrite(stream)
+        } catch (error: Throwable) {
+            atomic.failWrite(stream)
+            throw error
+        }
+    }
 
     fun loadThumbnail(id: String): Bitmap? {
         val thumbnail = thumbnailFile(id)
@@ -211,7 +250,7 @@ class DepthWallpaperStore(context: Context) {
             subjectDepth = optDouble("subjectDepth", .7).toFloat().coerceIn(.1f, .95f),
             hasLayers = optBoolean("hasLayers", false) &&
                 File(File(root, projectId), "mask.png").isFile &&
-                File(File(root, projectId), "background.jpg").isFile,
+                (backgroundFile(projectId).isFile || File(File(root, projectId), "background.jpg").isFile),
         )
     }.getOrNull()
 }

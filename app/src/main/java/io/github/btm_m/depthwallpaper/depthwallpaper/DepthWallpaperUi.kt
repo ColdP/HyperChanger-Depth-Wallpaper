@@ -208,6 +208,7 @@ internal fun DepthWallpaperLabPage(
                     result.depth.recycle()
                     result.layers.mask.recycle()
                     result.layers.background.recycle()
+                    result.layers.backgroundDepth.recycle()
                     return@launch
                 }
                 val project = withContext(Dispatchers.IO) {
@@ -216,6 +217,7 @@ internal fun DepthWallpaperLabPage(
                 result.depth.recycle()
                 result.layers.mask.recycle()
                 result.layers.background.recycle()
+                result.layers.backgroundDepth.recycle()
                 if (generationToken == token) {
                     generation = LabGeneration.Done(project.id)
                 }
@@ -941,6 +943,7 @@ private class DepthPreviewData(
     val depth: Bitmap?,
     val mask: Bitmap?,
     val background: Bitmap?,
+    val backgroundDepth: Bitmap?,
     val subjectDepth: Float,
     val hasLayers: Boolean,
 )
@@ -955,6 +958,7 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
     var depth by remember { mutableStateOf<Bitmap?>(null) }
     var mask by remember { mutableStateOf<Bitmap?>(null) }
     var background by remember { mutableStateOf<Bitmap?>(null) }
+    var backgroundDepth by remember { mutableStateOf<Bitmap?>(null) }
     var subjectDepth by remember { mutableStateOf(.7f) }
     var hasLayers by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
@@ -974,11 +978,18 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
         val loaded = withContext(Dispatchers.IO) {
             val project = store.project(id)
             val layered = project?.hasLayers == true
+            val original = store.loadOriginal(id)
+            val depth = store.loadDepth(id)
+            val mask = if (layered) store.loadMask(id) else null
+            val plate = if (original != null && depth != null && mask != null) {
+                store.loadBackgroundPlate(id, original, mask, depth)
+            } else null
             DepthPreviewData(
-                original = store.loadOriginal(id),
-                depth = store.loadDepth(id),
-                mask = if (layered) store.loadMask(id) else null,
-                background = if (layered) store.loadBackground(id) else null,
+                original = original,
+                depth = depth,
+                mask = mask,
+                background = plate?.image,
+                backgroundDepth = plate?.depth,
                 subjectDepth = project?.subjectDepth ?: .7f,
                 hasLayers = layered,
             )
@@ -987,6 +998,7 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
         depth = loaded.depth
         mask = loaded.mask
         background = loaded.background
+        backgroundDepth = loaded.backgroundDepth
         subjectDepth = loaded.subjectDepth
         hasLayers = loaded.hasLayers && loaded.mask != null && loaded.background != null
         failed = loaded.original == null || loaded.depth == null
@@ -1056,6 +1068,7 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
                 val depthMap = depth
                 val maskMap = mask
                 val backgroundMap = background
+                val backgroundDepthMap = backgroundDepth
                 when {
                     failed -> Text(
                         tr("depthPreviewMissing", "这条记录无法加载"),
@@ -1081,10 +1094,10 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
                         depth = depthMap,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    mode == DepthRenderMode.FINAL && maskMap != null && backgroundMap != null -> LayeredSpatialCanvas(
+                    mode == DepthRenderMode.FINAL && maskMap != null && backgroundMap != null && backgroundDepthMap != null -> LayeredSpatialCanvas(
                         image = image,
                         background = backgroundMap,
-                        depth = depthMap,
+                        backgroundDepth = backgroundDepthMap,
                         mask = maskMap,
                         subjectDepth = subjectDepth,
                         tiltProvider = tiltProvider,

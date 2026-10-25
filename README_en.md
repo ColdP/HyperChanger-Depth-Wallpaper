@@ -109,7 +109,8 @@ Windows:
 - Depth and matting models run entirely on device; images are never uploaded.
 - Generated results live in the app's private storage: original, depth map, mask, background plate and thumbnail.
 - Deleting a downloaded model does not affect existing history; regenerate an old entry to obtain layered data.
-- Mask edge and background-fill improvements apply to newly generated projects; regenerate existing entries to use them.
+- Regenerate to update mask edges. Existing entries automatically repair background colour and depth the first time their preview opens; no model download is needed.
+- Background fill estimates colour and depth from visible surroundings; it cannot recover the true texture hidden behind the subject.
 - Licensed under AGPL-3.0-or-later.
 
 ## Acknowledgements

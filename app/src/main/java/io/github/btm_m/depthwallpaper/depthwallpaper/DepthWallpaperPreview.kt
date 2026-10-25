@@ -360,7 +360,7 @@ fun BokehDepthCanvas(
 fun LayeredSpatialCanvas(
     image: Bitmap,
     background: Bitmap,
-    depth: Bitmap,
+    backgroundDepth: Bitmap,
     mask: Bitmap,
     subjectDepth: Float,
     tiltProvider: () -> Offset,
@@ -387,7 +387,7 @@ fun LayeredSpatialCanvas(
         .drawWithCache {
             val imageShader = BitmapShader(image, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val backgroundShader = BitmapShader(background, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-            val depthShader = BitmapShader(depth, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            val depthShader = BitmapShader(backgroundDepth, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val maskShader = BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val shader = RuntimeShader(LAYERED_SHADER)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)

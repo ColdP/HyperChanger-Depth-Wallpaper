@@ -38,4 +38,30 @@ for alpha in [0, .1, .25, .5, .75, 1]:
 coordinate_effect = skia.RuntimeEffect.MakeForShader('half4 main(float2 p) { return half4(p.x / 32.0, p.y / 32.0, 0.0, 1.0); }')
 foreground = skia.RuntimeShaderBuilder(coordinate_effect).makeShader()
 np.testing.assert_array_equal(render(1, .1, foreground), render(1, .9, foreground))
-print('Skia shader checks passed: compilation, six transparent/opaque alpha levels, and foreground continuity across depth edges')
+# The complete background must remain opaque when a large foreground moves to either side.
+width, height = 96, 64
+image_pixels = np.full((height, width, 4), [255, 0, 255, 255], dtype=np.uint8)
+mask_pixels = np.zeros((height, width, 4), dtype=np.uint8)
+mask_pixels[:, :, 3] = 255
+mask_pixels[12:52, 28:68, :3] = 255
+image_shader = skia.Image.fromarray(image_pixels).makeShader()
+mask_shader = skia.Image.fromarray(mask_pixels).makeShader()
+plate_effect = skia.RuntimeEffect.MakeForShader('half4 main(float2 p) { return half4(p.x / 192.0, p.y / 128.0, 0.35, 1.0); }')
+plate_shader = skia.RuntimeShaderBuilder(plate_effect).makeShader()
+for displacement in [-12.0, 0.0, 12.0]:
+    builder = skia.RuntimeShaderBuilder(effect)
+    builder.setUniform('size', [float(width), float(height)])
+    builder.setUniform('parallax', [displacement, 0.0])
+    builder.setUniform('tilt', [0.0, 0.0])
+    builder.setUniform('subjectDepth', .8)
+    builder.setChild('img', image_shader)
+    builder.setChild('msk', mask_shader)
+    builder.setChild('bg', plate_shader)
+    builder.setChild('dep', skia.Shaders.Color(skia.Color4f(.3, .3, .3, 1)))
+    surface = skia.Surface(width, height)
+    surface.getCanvas().drawPaint(skia.Paint(Shader=builder.makeShader()))
+    rendered = surface.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType)
+    assert np.all(rendered[:, :, 3] == 255)
+    background_pixels = rendered[:, :, 1] > 0
+    assert np.all(rendered[:, :, 2][background_pixels] >= 88)
+print('Skia shader checks passed: alpha compositing, foreground continuity, and opaque revealed backgrounds at three parallax positions')

@@ -15,3 +15,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Preview zoom checks failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Matting edge checks failed to compile.' }
 & java "-Djava.io.tmpdir=$output" -cp "$output\matting-classes;$stdlib" io.github.btm_m.depthwallpaper.depthwallpaper.MattingEdgesTestKt "$output\matting-edges.png"
 if ($LASTEXITCODE -ne 0) { throw 'Matting edge checks failed.' }
+& java "-Djava.io.tmpdir=$output" -cp "$gradleLib\*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -classpath "$stdlib;$annotations" -d "$output\background-classes" "$project\app\src\main\java\io\github\btm_m\depthwallpaper\depthwallpaper\BackgroundInpaint.kt" "$PSScriptRoot\BackgroundInpaintTest.kt"
+if ($LASTEXITCODE -ne 0) { throw 'Background fill checks failed to compile.' }
+& java "-Djava.io.tmpdir=$output" -cp "$output\background-classes;$stdlib" io.github.btm_m.depthwallpaper.depthwallpaper.BackgroundInpaintTestKt "$output\background-fill.png"
+if ($LASTEXITCODE -ne 0) { throw 'Background fill checks failed.' }
