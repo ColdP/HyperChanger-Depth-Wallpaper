@@ -705,6 +705,7 @@ internal fun DepthWallpaperDownloadsPage(
     val downloadState = state ?: remember(context) { DepthWallpaperDownloadsState(context) }
     val states = downloadState.states
     val jobs = downloadState.jobs
+    var pendingDelete by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
 
     fun startModelDownload(model: DepthModel) {
@@ -786,13 +787,12 @@ internal fun DepthWallpaperDownloadsPage(
                     sizeText = formatBytes(model.sizeBytes),
                     state = states[model.id] ?: ModelDownloadState.Idle,
                     downloadLabel = tr("depthDownloadModel", "下载模型"),
-                    deleteLabel = tr("depthDeleteModel", "删除模型"),
                     onDownload = { startModelDownload(model) },
                     onCancel = { jobs[model.id]?.cancel() },
-                    onDelete = {
+                    onDelete = { pendingDelete = model.displayName to {
                         DepthModelStore.delete(context, model)
                         states[model.id] = ModelDownloadState.Idle
-                    },
+                    } },
                 )
             }
             items(MattingModel.entries.toList()) { matting ->
@@ -807,13 +807,12 @@ internal fun DepthWallpaperDownloadsPage(
                     sizeText = formatBytes(resource.sizeBytes),
                     state = states[resource.id] ?: ModelDownloadState.Idle,
                     downloadLabel = tr("depthDownloadResource", "下载"),
-                    deleteLabel = tr("depthDeleteResource", "删除"),
                     onDownload = { startResourceDownload(resource) },
                     onCancel = { jobs[resource.id]?.cancel() },
-                    onDelete = {
+                    onDelete = { pendingDelete = matting.displayName to {
                         DepthResourceStore.delete(context, resource)
                         states[resource.id] = ModelDownloadState.Idle
-                    },
+                    } },
                 )
             }
             item {
@@ -826,6 +825,24 @@ internal fun DepthWallpaperDownloadsPage(
             }
         }
     }
+    pendingDelete?.let { (name, delete) ->
+        WindowDialog(show = true, onDismissRequest = { pendingDelete = null }) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(tr("确认删除", "确认删除"), style = MiuixTheme.textStyles.title3, fontWeight = FontWeight.Bold)
+                Text(tr("确定删除 %s 吗？删除后需要重新下载才能使用。", "确定删除 %s 吗？删除后需要重新下载才能使用。").format(name), style = MiuixTheme.textStyles.body1)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GlassDialogButton(onClick = { pendingDelete = null }, modifier = Modifier.weight(1f)) {
+                        Text(tr("取消", "取消"))
+                    }
+                    GlassDialogButton(
+                        onClick = { delete(); pendingDelete = null },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text(tr("删除", "删除")) }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -835,7 +852,6 @@ private fun ResourceCard(
     sizeText: String,
     state: ModelDownloadState,
     downloadLabel: String,
-    deleteLabel: String,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
@@ -904,7 +920,7 @@ private fun ResourceCard(
                             modifier = Modifier.fillMaxWidth(),
                             cornerRadius = 50.dp,
                         ) {
-                            Text(deleteLabel, fontSize = 15.sp)
+                            Text(tr("删除", "删除"), fontSize = 15.sp)
                         }
                     }
                     is ModelDownloadState.Failed -> {

@@ -20,7 +20,6 @@ import android.app.DownloadManager
 import android.app.WallpaperManager
 import android.Manifest
 import android.content.Context
-import android.content.ComponentName
 import android.content.Intent
 import android.content.res.Resources
 import android.content.res.ColorStateList
@@ -205,7 +204,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.SecureRandom
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.time.Year
@@ -272,19 +270,6 @@ private fun builtinLanguageStrings(context: android.content.Context, language: S
     }.getOrDefault(emptyMap())
 }
 
-private val modulePresetRandom = SecureRandom()
-private const val MODULE_PRESET_RANDOM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-private fun defaultModulePresetFileName(): String {
-    val timestamp = SimpleDateFormat("yyyyMMddHHmm", Locale.US).format(Date())
-    val suffix = buildString {
-        repeat(6) {
-            append(MODULE_PRESET_RANDOM_ALPHABET[modulePresetRandom.nextInt(MODULE_PRESET_RANDOM_ALPHABET.length)])
-        }
-    }
-    return "HyperChanger_Presets_${timestamp}_${suffix}.json"
-}
-
 private enum class PageId {
     SHADE,
     SHADE_PRESETS,
@@ -292,9 +277,9 @@ private enum class PageId {
     SOFT_GLASS_PRESETS,
     GESTURE_HANDLE_STYLE, DESKTOP, DESKTOP_MATERIAL,
     ISLAND, IOS_NOTIFICATION_CENTER, IOS_NOTIFICATION_CLEAR, UNLOCK_ISLAND, NOTIFICATION_RESTRICTIONS, NOTIFICATION_MEDIA_CARD, STATUS, STATUS_SIGNAL_CUSTOMIZATION, STATUS_SIGNAL_TUNING, CONTROL, LOCK, LOCKSCREEN_CAPSULE, LIFT_TO_WAKE_SCHEDULE, LOCKSCREEN_WIDGET_EDITOR, LOCKSCREEN_WIDGET_BACKGROUND, LYRIC_LIBRARY, RASTER_WALLPAPER, SUPER_XIAOAI, CAMERA, CAMERA_PALETTE, SYSTEM_UPDATE, SYSTEM_SETTINGS, SYSTEM_FRAMEWORK, DEVICE_PROFILE,
-    SETTINGS_APPEARANCE_HOME, SETTINGS_APPEARANCE_DEVICE, SETTINGS_ENTRY_LABELS, TUTORIAL_DEVICE_CARD, ABOUT, LICENSE, LANGUAGE, DONATE, OPEN, CONTRIBUTORS,
+    SETTINGS_APPEARANCE_HOME, SETTINGS_APPEARANCE_DEVICE, TUTORIAL_DEVICE_CARD, ABOUT, LICENSE, LANGUAGE, DONATE, OPEN, CONTRIBUTORS,
     LEGAL_DISCLAIMER, LEGAL_PRIVACY, LEGAL_USER_AGREEMENT,
-    SOFTWARE_UPDATE, UPDATE_LOG, REAR_SCREEN, REAR_CUSTOM_CENTER, REAR_MUSIC_APPS, OTHER, APP_NAVIGATION, RESTART_SCOPES, DISCLAIMER, SIMULATE_MEDIA_NOTIFICATION,
+    SOFTWARE_UPDATE, UPDATE_LOG, REAR_SCREEN, REAR_CUSTOM_CENTER, REAR_MUSIC_APPS, OTHER, APP_NAVIGATION, DISCLAIMER, SIMULATE_MEDIA_NOTIFICATION,
     DEPTH_WALLPAPER, DEPTH_WALLPAPER_HISTORY, DEPTH_WALLPAPER_DOWNLOAD, DEPTH_WALLPAPER_PREVIEW,
 }
 
@@ -517,7 +502,6 @@ private fun Root(
         if (selected.size > 4) Toast.makeText(context, tr("最多选择 4 个素材", "最多选择 4 个素材"), Toast.LENGTH_SHORT).show()
     }
     var pendingJsonExport by remember { mutableStateOf<ShadePreset?>(null) }
-    var pendingModulePresetExport by remember { mutableStateOf<String?>(null) }
     var qrShareRequest by remember { mutableStateOf<QrShareRequest?>(null) }
     var pendingQrSave by remember { mutableStateOf<QrShareRequest?>(null) }
     val exportPreset = rememberLauncherForActivityResult(
@@ -556,95 +540,6 @@ private fun Root(
             context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: error(tr("无法读取文件", "无法读取文件"))
         }.onSuccess(::importPresetPayload).onFailure {
-            Toast.makeText(context, tr("导入失败", "导入失败"), Toast.LENGTH_SHORT).show()
-        }
-    }
-    val exportModulePreset = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
-    ) { uri ->
-        val payload = pendingModulePresetExport ?: return@rememberLauncherForActivityResult
-        pendingModulePresetExport = null
-        if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(payload) }
-                ?: error(tr("无法写入文件", "无法写入文件"))
-        }.onSuccess {
-            Toast.makeText(context, tr("预设已导出", "预设已导出"), Toast.LENGTH_SHORT).show()
-        }.onFailure {
-            Toast.makeText(context, tr("导出失败", "导出失败"), Toast.LENGTH_SHORT).show()
-        }
-    }
-    fun importModulePresetPayload(payload: String) {
-        val previousNotificationSettings = context.getSharedPreferences(REMOTE_PREFERENCE_GROUP, Context.MODE_PRIVATE).toNotificationIslandSettings()
-        val previousWidthSettings = readIslandWidthSettings(context.getSharedPreferences(REMOTE_PREFERENCE_GROUP, Context.MODE_PRIVATE))
-        val previousSettings = hooks.settings
-        val previousLockscreenCapsule = lockscreenCapsules.settings
-        val previousCameras = cameras.settings
-        val previousDeviceProfile = deviceProfiles.settings
-        val previousAppearance = appearances.settings
-        val previousMusicWhitelist = musicStore.apps
-        val previousDockSettings = dockStore.settings
-        val previousHomeRecentsSettings = homeRecentsStore.settings
-        val previousHomeMultiSplitSettings = homeMultiSplitStore.settings
-        val previousHomeFolderSettings = homeFolderStore.settings
-        val previousHomeMaterialSettings = homeMaterialStore.settings
-        runCatching {
-            ModulePresetCodec.import(context, service, payload)
-            hooks.reload()
-            lockscreenCapsules.reload()
-            cameras.reload()
-            deviceProfiles.reload()
-            appearances.reload()
-            musicStore.reload()
-            dockStore.reload()
-            homeRecentsStore.reload()
-            homeMultiSplitStore.reload()
-            homeFolderStore.reload()
-            homeMaterialStore.reload()
-            settings = hooks.settings
-            lockscreenCapsuleSettings = lockscreenCapsules.settings
-            cameraSettings = cameras.settings
-            deviceProfile = deviceProfiles.settings
-            appearance = appearances.settings
-            musicWhitelist = musicStore.apps
-            dockSettings = dockStore.settings
-            homeRecentsSettings = homeRecentsStore.settings
-            homeMultiSplitSettings = homeMultiSplitStore.settings
-            homeFolderSettings = homeFolderStore.settings
-            homeMaterialSettings = homeMaterialStore.settings
-        }.onSuccess {
-            markRestartTargets(suggestedScopesForHookChange(previousSettings, settings))
-            val preferences = context.getSharedPreferences(REMOTE_PREFERENCE_GROUP, Context.MODE_PRIVATE)
-            if (previousNotificationSettings != preferences.toNotificationIslandSettings() || previousWidthSettings != readIslandWidthSettings(preferences)) {
-                markRestartTargets(setOf(ScopeApplication.SYSTEM_UI))
-            }
-            if (previousLockscreenCapsule != lockscreenCapsuleSettings) {
-                markRestartTargets(setOf(ScopeApplication.SYSTEM_UI, ScopeApplication.AOD))
-            }
-            if (previousCameras != cameraSettings) markRestartTargets(
-                setOf(ScopeApplication.CAMERA, ScopeApplication.GALLERY, ScopeApplication.MEDIA_EDITOR),
-            )
-            if (previousDeviceProfile != deviceProfile || previousAppearance != appearance) {
-                markRestartTargets(setOf(ScopeApplication.SETTINGS))
-            }
-            if (previousMusicWhitelist != musicWhitelist) {
-                markRestartTargets(setOf(ScopeApplication.SUBSCREEN_CENTER))
-            }
-            if (previousDockSettings != dockSettings) markRestartTargets(setOf(ScopeApplication.DESKTOP))
-            if (previousHomeRecentsSettings != homeRecentsSettings || previousHomeMultiSplitSettings != homeMultiSplitSettings || previousHomeFolderSettings != homeFolderSettings || previousHomeMaterialSettings != homeMaterialSettings) {
-                markRestartTargets(setOf(ScopeApplication.DESKTOP))
-            }
-            Toast.makeText(context, tr("预设已导入", "预设已导入"), Toast.LENGTH_SHORT).show()
-        }.onFailure {
-            Toast.makeText(context, tr("导入失败", "导入失败"), Toast.LENGTH_SHORT).show()
-        }
-    }
-    val importModulePreset = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: error(tr("无法读取文件", "无法读取文件"))
-        }.onSuccess(::importModulePresetPayload).onFailure {
             Toast.makeText(context, tr("导入失败", "导入失败"), Toast.LENGTH_SHORT).show()
         }
     }
@@ -862,13 +757,6 @@ private fun Root(
                 airDropSettings = airDrop.settings
                 if (before != airDropSettings) markRestartTargets(setOf(ScopeApplication.AIRDROP))
             },
-            suggestedRestartTargets = pendingRestartTargets,
-            onRestartedTargets = { restarted -> pendingRestartTargets = pendingRestartTargets - restarted },
-            onImportModulePreset = { importModulePreset.launch(arrayOf("application/json", "text/json", "text/plain")) },
-            onExportModulePreset = {
-                pendingModulePresetExport = ModulePresetCodec.export(context)
-                exportModulePreset.launch(defaultModulePresetFileName())
-            },
             presetActions = ShadePresetActions(
                 userPresets = userPresets,
                 saveUserPreset = { name ->
@@ -1009,10 +897,6 @@ private fun Shell(
     updateMusicWhitelist: (Set<String>) -> Unit,
     updateScreenRecorder: (((ScreenRecorderSettings) -> ScreenRecorderSettings) -> Unit),
     updateAirDrop: (((AirDropSettings) -> AirDropSettings) -> Unit),
-    suggestedRestartTargets: Set<ScopeApplication>,
-    onRestartedTargets: (Set<ScopeApplication>) -> Unit,
-    onImportModulePreset: () -> Unit,
-    onExportModulePreset: () -> Unit,
     presetActions: ShadePresetActions,
     onPickRasterImages: () -> Unit,
     onApplyRasterWallpaper: () -> Unit,
@@ -1066,7 +950,7 @@ private fun Shell(
         for (attempt in 0 until 3) {
             if (attempt > 0) delay(3_000L)
             val result = withContext(Dispatchers.IO) {
-                runCatching { fetchUpdateInfo(lastUpdateChannel) }
+                runCatching { fetchUpdateInfo() }
             }
             if (result.isSuccess) {
                 resolved = result.getOrNull()
@@ -1171,8 +1055,6 @@ private fun Shell(
                 onRequestNotificationPermission = onRequestNotificationPermission,
                 screenRecorder = screenRecorder,
                 updateScreenRecorder = updateScreenRecorder,
-                suggestedRestartTargets = suggestedRestartTargets,
-                onRestartedTargets = onRestartedTargets,
         )
         }
     }
@@ -1224,14 +1106,9 @@ private fun Shell(
                     Tab.SETTINGS -> SettingsHome(
                         settings,
                         navigationSettings,
-                        settingsApp,
-                        service != null,
                         update,
                         updateNavigation,
-                        updateSettingsApp,
                         openRootPage,
-                        onImportModulePreset,
-                        onExportModulePreset,
                     )
                 }
             }
@@ -2209,26 +2086,15 @@ private fun RearAppIcon(packageManager: PackageManager, info: ApplicationInfo) {
 private fun SettingsHome(
     settings: HookSettings,
     navigationSettings: ModuleNavigationSettings,
-    settingsApp: SettingsAppPreferences,
-    online: Boolean,
     update: ((HookSettings) -> HookSettings) -> Unit,
     updateNavigation: ((ModuleNavigationSettings) -> ModuleNavigationSettings) -> Unit,
-    updateSettingsApp: ((SettingsAppPreferences) -> SettingsAppPreferences) -> Unit,
     open: (PageId) -> Unit,
-    onImportModulePreset: () -> Unit,
-    onExportModulePreset: () -> Unit,
 ) = AppPage(tr("settings", tr("设置", "设置"))) { padding, scroll ->
     val context = LocalContext.current
-    var editingEntryTitle by remember { mutableStateOf(false) }
     var predictiveProgress by remember(settings.predictiveBackProgress) { mutableFloatStateOf(settings.predictiveBackProgress.toFloat()) }
     AppList(padding, scroll) {
-        item { ServiceCard(online) }
         item {
             Group(tr("application_settings", tr("\u5e94\u7528\u8bbe\u7f6e", "\u5e94\u7528\u8bbe\u7f6e"))) {
-                ArrowPreference(
-                    title = tr("restart_scope_apps", tr("\u91cd\u542f\u4f5c\u7528\u57df\u5e94\u7528", "\u91cd\u542f\u4f5c\u7528\u57df\u5e94\u7528")),
-                    onClick = { open(PageId.RESTART_SCOPES) },
-                )
                 val languagePrefs = remember { context.getSharedPreferences("languages", android.content.Context.MODE_PRIVATE) }
                 val selectedLanguage = languagePrefs.getString("selected", "system") ?: "system"
                 val selectedLanguageSummary = when (selectedLanguage) {
@@ -2239,30 +2105,6 @@ private fun SettingsHome(
                     else -> loadLanguagePacks(languagePrefs).firstOrNull { it.name == selectedLanguage }?.name ?: selectedLanguage
                 }
                 ArrowPreference(title = tr("language", "语言"), summary = selectedLanguageSummary, onClick = { open(PageId.LANGUAGE) })
-                SwitchPreference(
-                    title = tr("隐藏桌面图标", "隐藏桌面图标"),
-                    checked = settings.hideAppIcon,
-                    onCheckedChange = { value ->
-                        update { it.copy(hideAppIcon = value) }
-                        setLauncherIconVisible(context, !value)
-                    },
-                )
-                OverlayDropdownPreference(
-                    title = tr("系统设置内模块应用入口", "系统设置内模块应用入口"),
-                    items = listOf(
-                        tr("禁用", "禁用"),
-                        tr("顶部", "顶部"),
-                        tr("中部", "中部"),
-                        tr("底部", "底部"),
-                    ),
-                    selectedIndex = settingsApp.entryPosition.coerceIn(0, 3),
-                    onSelectedIndexChange = { index -> updateSettingsApp { it.copy(entryPosition = index) } },
-                )
-                ArrowPreference(
-                    title = tr("settingsAppEntryTitle", "模块应用入口文案"),
-                    summary = settingsApp.entryTitle.ifBlank { tr("settingsAppEntryTitleDefault", "默认（模块名称）") },
-                    onClick = { editingEntryTitle = true },
-                )
                 OverlayDropdownPreference(
                     title = tr("theme_mode", tr("\u4e3b\u9898\u6a21\u5f0f", "\u4e3b\u9898\u6a21\u5f0f")),
                     items = listOf(tr("followSystem", tr("\u8ddf\u968f\u7cfb\u7edf", "\u8ddf\u968f\u7cfb\u7edf")), tr("light_mode", tr("\u6d45\u8272\u6a21\u5f0f", "\u6d45\u8272\u6a21\u5f0f")), tr("dark_mode", tr("\u6df1\u8272\u6a21\u5f0f", "\u6df1\u8272\u6a21\u5f0f"))),
@@ -2312,12 +2154,6 @@ OverlayDropdownPreference(
             }
         }
         item {
-            Group(tr("\u5e94\u7528\u9884\u8bbe", "\u5e94\u7528\u9884\u8bbe")) {
-                ArrowPreference(title = tr("\u5bfc\u5165\u9884\u8bbe", "\u5bfc\u5165\u9884\u8bbe"), onClick = onImportModulePreset)
-                ArrowPreference(title = tr("\u5bfc\u51fa\u9884\u8bbe", "\u5bfc\u51fa\u9884\u8bbe"), onClick = onExportModulePreset)
-            }
-        }
-        item {
             Group(tr("\u5e94\u7528\u4fe1\u606f", "\u5e94\u7528\u4fe1\u606f")) {
                 ArrowPreference(title = tr("\u5173\u4e8e", "\u5173\u4e8e"), onClick = { open(PageId.ABOUT) })
                 ArrowPreference(title = tr("\u8f6f\u4ef6\u66f4\u65b0", "\u8f6f\u4ef6\u66f4\u65b0"), onClick = { open(PageId.SOFTWARE_UPDATE) })
@@ -2325,353 +2161,7 @@ OverlayDropdownPreference(
             }
         }
     }
-    if (editingEntryTitle) {
-        DeviceProfileFieldDialog(
-            title = tr("settingsAppEntryTitle", "模块应用入口文案"),
-            current = settingsApp.entryTitle,
-            inputLabel = tr("settingsAppEntryTitleHint", "留空则使用模块名称"),
-            onDismiss = { editingEntryTitle = false },
-            onSave = { value ->
-                updateSettingsApp { it.copy(entryTitle = value) }
-                editingEntryTitle = false
-            },
-        )
-    }
-}
 
-@Composable
-private fun RestartScopesPage(
-    suggestedTargets: Set<ScopeApplication>,
-    onRestartedTargets: (Set<ScopeApplication>) -> Unit,
-    back: () -> Unit,
-) {
-    val context = LocalContext.current
-    var selectedTargets by remember { mutableStateOf(emptySet<ScopeApplication>()) }
-    var confirmationTargets by remember { mutableStateOf<Set<ScopeApplication>?>(null) }
-    var hiddenSuggestionTargets by remember { mutableStateOf(emptySet<ScopeApplication>()) }
-    val systemUiTargets = listOf(
-        ScopeApplication.SYSTEM_UI,
-        ScopeApplication.DESKTOP,
-        ScopeApplication.WALLPAPER,
-        ScopeApplication.AOD,
-        ScopeApplication.THEME_MANAGER,
-    )
-    val systemFeatureTargets = listOf(
-        ScopeApplication.SETTINGS,
-        ScopeApplication.PERSONAL_ASSISTANT,
-        ScopeApplication.SUBSCREEN_CENTER,
-        ScopeApplication.SYSTEM_UPDATE,
-        ScopeApplication.SOUND_EFFECT,
-        ScopeApplication.MI_SETTINGS,
-        ScopeApplication.SCREEN_RECORDER,
-        ScopeApplication.SUPER_XIAOAI,
-        ScopeApplication.SUPER_XIAOAI_IME,
-        ScopeApplication.GALLERY,
-        ScopeApplication.CAMERA,
-        ScopeApplication.MEDIA_EDITOR,
-    )
-    val otherTargets = listOf(
-        ScopeApplication.APPLE_MUSIC,
-        ScopeApplication.WEIBO,
-        ScopeApplication.XIAOHONGSHU,
-        ScopeApplication.XIAOMI_STORE,
-        ScopeApplication.XIAOMI_WALLET,
-        ScopeApplication.XIAOMI_HEALTH,
-    )
-    val toggleTarget: (ScopeApplication) -> Unit = { target ->
-        selectedTargets = if (target in selectedTargets) selectedTargets - target else selectedTargets + target
-    }
-    AppPage(
-        title = tr("重启作用域应用", "重启作用域应用"),
-        onBack = back,
-        floatingToolbarPosition = ToolbarPosition.BottomCenter,
-        floatingToolbar = {
-            Box(Modifier.fillMaxWidth().padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {
-                GlassActionButton(
-                    enabled = selectedTargets.isNotEmpty(),
-                    onClick = { confirmationTargets = selectedTargets },
-                    size = 60.dp,
-                    surfaceColor = ComposeColor(0xFF0088FF),
-                ) {
-                    Icon(
-                        MiuixIcons.Regular.Refresh,
-                        tr("重启", "重启"),
-                        Modifier.size(24.dp),
-                        tint = ComposeColor.White,
-                    )
-                }
-            }
-        },
-    ) { padding, scroll ->
-        AppList(padding, scroll, 112) {
-            if (suggestedTargets.isNotEmpty()) {
-                item {
-                    AnimatedVisibility(
-                        visible = suggestedTargets != hiddenSuggestionTargets,
-                        exit = fadeOut(
-                            animationSpec = tween(320, easing = FastOutSlowInEasing),
-                        ) + slideOutVertically(
-                            animationSpec = tween(380, easing = FastOutSlowInEasing),
-                        ) { height -> -height / 4 } + shrinkVertically(
-                            animationSpec = tween(380, easing = FastOutSlowInEasing),
-                            shrinkTowards = Alignment.Top,
-                        ),
-                    ) {
-                        val exitBlurRadius by transition.animateFloat(
-                            transitionSpec = { tween(300, easing = FastOutSlowInEasing) },
-                            label = "restartSuggestionExitBlur",
-                        ) { state ->
-                            if (state == EnterExitState.Visible) 0f else 12f
-                        }
-                        Box(Modifier.blur(exitBlurRadius.dp)) {
-                            RestartSuggestionCard(
-                                targets = suggestedTargets,
-                                onApply = { selectedTargets = selectedTargets + suggestedTargets },
-                                onDismiss = { hiddenSuggestionTargets = suggestedTargets },
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                RestartScopeCard(
-                    title = tr("系统界面", "系统界面"),
-                    targets = systemUiTargets,
-                    selectedTargets = selectedTargets,
-                    onToggle = toggleTarget,
-                )
-            }
-            item {
-                RestartScopeCard(
-                    title = tr("系统功能", "系统功能"),
-                    targets = systemFeatureTargets,
-                    selectedTargets = selectedTargets,
-                    onToggle = toggleTarget,
-                )
-            }
-            item {
-                RestartScopeCard(
-                    title = tr("其他", "其他"),
-                    targets = otherTargets,
-                    selectedTargets = selectedTargets,
-                    onToggle = toggleTarget,
-                )
-            }
-        }
-    }
-    RestartScopesConfirmationDialog(
-        show = confirmationTargets != null,
-        selectedTargets = confirmationTargets.orEmpty(),
-        onDismiss = { confirmationTargets = null },
-        onConfirm = {
-            val restartedTargets = confirmationTargets.orEmpty()
-            SystemUiRestarter.restart(context, restartedTargets)
-            onRestartedTargets(restartedTargets)
-            selectedTargets = selectedTargets - restartedTargets
-            confirmationTargets = null
-        },
-    )
-}
-
-@Composable
-private fun RestartSuggestionCard(
-    targets: Set<ScopeApplication>,
-    onApply: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val shape = RoundedCornerShape(22.5.dp)
-    val backdrop = rememberLayerBackdrop()
-    val animationScope = rememberCoroutineScope()
-    val touchHighlight = remember(animationScope) {
-        InteractiveHighlight(
-            animationScope = animationScope,
-            radiusMultiplier = 1.75f,
-            surfaceAlpha = .12f,
-            falloffMultiplier = .30f,
-        ) { size, offset ->
-            Offset(
-                offset.x.coerceIn(0f, size.width),
-                offset.y.coerceIn(0f, size.height),
-            )
-        }
-    }
-    val surface = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = .70f)
-    val glassModifier = if (isRuntimeShaderSupported()) {
-        Modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            effects = {
-                vibrancy()
-                blur(4.dp.toPx())
-            },
-            highlight = {
-                Highlight.Default.copy(
-                    width = .75.dp,
-                    blurRadius = .35.dp,
-                    alpha = .78f,
-                )
-            },
-            shadow = null,
-            innerShadow = null,
-            onDrawSurface = { },
-        )
-    } else {
-        Modifier.clip(shape)
-    }
-    val orderedTargets = ScopeApplication.entries.filter { it in targets }
-    val targetNames = orderedTargets.joinToString("、") { tr(it.title, it.title) }
-    Box(
-        modifier = Modifier.fillMaxWidth().then(touchHighlight.gestureModifier),
-    ) {
-        // Keep the sampled layer and the glass consumer as siblings. Reading the page's own
-        // backdrop from inside its recorded content creates a RenderNode cycle on HyperOS.
-        Box(
-            Modifier.matchParentSize()
-                .layerBackdrop(backdrop)
-                .clip(shape)
-                .background(surface),
-        )
-        Box(
-            Modifier.matchParentSize()
-                .then(glassModifier)
-                .border(
-                    width = 1.dp,
-                    color = ComposeColor.Gray.copy(alpha = .20f),
-                    shape = shape,
-                ),
-        )
-        Box(
-            Modifier.matchParentSize()
-                .clip(shape)
-                .then(touchHighlight.modifier),
-        )
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    tr("重启建议", "重启建议"),
-                    style = MiuixTheme.textStyles.body1,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    imageVector = MiuixIcons.Regular.Close,
-                    contentDescription = tr("关闭", "关闭"),
-                    modifier = Modifier.size(18.dp).clip(CircleShape).clickable(onClick = onDismiss),
-                    tint = MiuixTheme.colorScheme.onSurface.copy(alpha = .70f),
-                )
-            }
-            Text(
-                tr("建议重启%s作用域", "建议重启%s作用域").format(targetNames),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(top = 5.dp),
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                GlassDialogButton(
-                    onClick = onApply,
-                    modifier = Modifier.widthIn(min = 95.dp).height(43.dp),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Text(
-                        tr("应用选项", "应用选项"),
-                        style = MiuixTheme.textStyles.body1.copy(
-                            fontSize = MiuixTheme.textStyles.body1.fontSize * .80f,
-                        ),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RestartScopeCard(
-    title: String,
-    targets: List<ScopeApplication>,
-    selectedTargets: Set<ScopeApplication>,
-    onToggle: (ScopeApplication) -> Unit,
-) {
-    SmallTitle(
-        title,
-        insideMargin = PaddingValues(start = 12.dp, top = 4.dp, end = 12.dp, bottom = 4.dp),
-    )
-    Card(Modifier.fillMaxWidth(), cornerRadius = 22.5.dp) {
-        targets.forEach { target ->
-            Row(
-                Modifier.fillMaxWidth().clickable { onToggle(target) }
-                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        tr(target.title, target.title),
-                        style = MiuixTheme.textStyles.body1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        target.packageName,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                Checkbox(
-                    state = if (target in selectedTargets) ToggleableState.On else ToggleableState.Off,
-                    onClick = { onToggle(target) },
-                    modifier = Modifier.padding(start = 12.dp),
-                    colors = CheckboxDefaults.checkboxColors(
-                        uncheckedForegroundColor = ComposeColor(0x808F8F8F),
-                    ),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RestartScopesConfirmationDialog(
-    show: Boolean,
-    selectedTargets: Set<ScopeApplication>,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    WindowDialog(show = show, onDismissRequest = onDismiss) {
-        Text(
-            tr("确认重启所选作用域应用？", "确认重启所选作用域应用？"),
-            style = MiuixTheme.textStyles.title3,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            tr("重启后相关应用会暂时关闭，并在下次使用时重新启动。", "重启后相关应用会暂时关闭，并在下次使用时重新启动。"),
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Text(
-            selectedTargets.joinToString("、") { tr(it.title, it.title) },
-            style = MiuixTheme.textStyles.body1,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GlassDialogButton(onDismiss, Modifier.weight(1f)) { Text(tr("取消", "取消")) }
-            GlassDialogButton(
-                onClick = onConfirm,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColorsPrimary(),
-                enabled = selectedTargets.isNotEmpty(),
-            ) { Text(tr("重启", "重启")) }
-        }
-    }
 }
 
 @Composable
@@ -3360,105 +2850,10 @@ OverlayDropdownPreference(
             }
         }
         item {
-            Group(tr("settingsEntryLabelsGroup", "设置入口文案")) {
-                ArrowPreference(
-                    title = tr("settingsEntryLabels", "自定义系统设置入口文案"),
-                    onClick = { open(PageId.SETTINGS_ENTRY_LABELS) },
-                )
-            }
-        }
-        item {
             Group(tr("设备信息", "设备信息")) {
                 ArrowPreference(title = tr("我的设备与全部参数", "我的设备与全部参数"), onClick = { open(PageId.DEVICE_PROFILE) })
             }
         }
-    }
-}
-
-private data class SettingsEntryLabel(val id: String, val title: String)
-
-/**
- * Settings dashboard headers this module can retitle.
- *
- * Keyed by the header id's **resource entry name** (`my_device`, `bluetooth_settings`, ...), which is
- * stable across Settings builds; the numeric `R.id` values are not.
- */
-private fun settingsEntryLabelCatalog(): List<SettingsEntryLabel> = listOf(
-    SettingsEntryLabel("my_device", tr("我的设备", "我的设备")),
-    SettingsEntryLabel("bluetooth_settings", tr("蓝牙", "蓝牙")),
-    SettingsEntryLabel("wifi_settings", tr("WLAN", "WLAN")),
-    SettingsEntryLabel("msim_settings", tr("SIM 卡与移动网络", "SIM 卡与移动网络")),
-    SettingsEntryLabel("mobile_network_settings", tr("移动网络", "移动网络")),
-    SettingsEntryLabel("wifi_tether_settings", tr("个人热点", "个人热点")),
-    SettingsEntryLabel("vpn_settings", tr("VPN", "VPN")),
-    SettingsEntryLabel("sound_settings", tr("声音与振动", "声音与振动")),
-    SettingsEntryLabel("screen_settings", tr("显示与亮度", "显示与亮度")),
-    SettingsEntryLabel("battery_settings_new", tr("电池", "电池")),
-    SettingsEntryLabel("application_settings", tr("应用", "应用")),
-    SettingsEntryLabel("privacy_protection_settings", tr("隐私保护", "隐私保护")),
-    SettingsEntryLabel("location_settings", tr("位置信息", "位置信息")),
-    SettingsEntryLabel("security_settings", tr("安全", "安全")),
-    SettingsEntryLabel("mi_account_settings", tr("小米账号", "小米账号")),
-    SettingsEntryLabel("micloud_settings", tr("小米云服务", "小米云服务")),
-    SettingsEntryLabel("wallpaper_settings", tr("壁纸与个性化", "壁纸与个性化")),
-    SettingsEntryLabel("theme_settings", tr("主题", "主题")),
-    SettingsEntryLabel("font_settings", tr("字体", "字体")),
-    SettingsEntryLabel("accessibility_function", tr("无障碍", "无障碍")),
-    SettingsEntryLabel("other_advanced_settings", tr("更多设置", "更多设置")),
-    SettingsEntryLabel("launcher_settings", tr("桌面", "桌面")),
-    SettingsEntryLabel("app_timer", tr("应用使用时间", "应用使用时间")),
-    SettingsEntryLabel("sub_screen", tr("妙享背屏", "妙享背屏")),
-    SettingsEntryLabel("flip_screen_settings", tr("小折叠外屏", "小折叠外屏")),
-    SettingsEntryLabel("fold_screen_settings", tr("折叠屏专区", "折叠屏专区")),
-    SettingsEntryLabel("tablet_screen_settings", tr("平板专区", "平板专区")),
-    SettingsEntryLabel("satellite_settings", tr("卫星通信", "卫星通信")),
-    SettingsEntryLabel("interconnection_settings", tr("互联互通", "互联互通")),
-    SettingsEntryLabel("header_google_settings", tr("Google", "Google")),
-    SettingsEntryLabel("xiao_mi_hyperos_ai", tr("小米澎湃AI", "小米澎湃AI")),
-    SettingsEntryLabel("system_apps_updater", tr("系统应用更新", "系统应用更新")),
-)
-
-@Composable
-private fun SettingsEntryLabelsPage(
-    settingsApp: SettingsAppPreferences,
-    update: ((SettingsAppPreferences) -> SettingsAppPreferences) -> Unit,
-    back: () -> Unit,
-) = AppPage(tr("settingsEntryLabels", "自定义系统设置入口文案"), back, restartScopes = setOf(ScopeApplication.SETTINGS)) { padding, scroll ->
-    var editing by remember { mutableStateOf<SettingsEntryLabel?>(null) }
-    AppList(padding, scroll) {
-        item {
-            Group(tr("settingsEntryLabelsGroup", "设置入口文案")) {
-                settingsEntryLabelCatalog().forEach { entry ->
-                    ArrowPreference(
-                        title = entry.title,
-                        summary = settingsApp.entryLabels[entry.id]?.takeIf { it.isNotBlank() }
-                            ?: tr("默认", "默认"),
-                        onClick = { editing = entry },
-                    )
-                }
-            }
-        }
-    }
-    editing?.let { entry ->
-        DeviceProfileFieldDialog(
-            title = entry.title,
-            current = settingsApp.entryLabels[entry.id].orEmpty(),
-            inputLabel = tr("settingsEntryLabelsInputHint", "留空使用系统默认"),
-            onDismiss = { editing = null },
-            onSave = { value ->
-                val trimmed = value.trim().take(MAX_SETTINGS_APP_ENTRY_TITLE_LENGTH)
-                update { current ->
-                    current.copy(
-                        entryLabels = if (trimmed.isEmpty()) {
-                            current.entryLabels - entry.id
-                        } else {
-                            current.entryLabels + (entry.id to trimmed)
-                        },
-                    )
-                }
-                editing = null
-            },
-        )
     }
 }
 
@@ -4205,17 +3600,6 @@ private fun DeviceProfileFieldDialog(
 }
 
 @Composable
-private fun ServiceCard(online: Boolean) {
-    val color = if (online) ComposeColor(0xFF38A169) else ComposeColor(0xFFE05353)
-    Card(Modifier.fillMaxWidth(), cornerRadius = 22.5.dp, colors = CardDefaults.defaultColors(color.copy(alpha = .14f)), insideMargin = PaddingValues(16.dp)) {
-        Column(Modifier.fillMaxWidth()) {
-            Text("LSPosed", style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.Bold)
-            Text(if (online) tr("\u5df2\u8fde\u63a5", "\u5df2\u8fde\u63a5") else tr("\u672a\u8fde\u63a5", "\u672a\u8fde\u63a5"), style = MiuixTheme.textStyles.body2, color = color, modifier = Modifier.padding(top = 4.dp))
-        }
-    }
-}
-
-@Composable
 private fun Group(
     title: String,
     insideMargin: PaddingValues = PaddingValues(0.dp),
@@ -4290,8 +3674,6 @@ private fun Detail(
     onRequestNotificationPermission: () -> Unit,
     screenRecorder: ScreenRecorderSettings,
     updateScreenRecorder: (((ScreenRecorderSettings) -> ScreenRecorderSettings) -> Unit),
-    suggestedRestartTargets: Set<ScopeApplication>,
-    onRestartedTargets: (Set<ScopeApplication>) -> Unit,
     openPage: (PageId) -> Unit,
     back: () -> Unit
 ) {
@@ -4345,7 +3727,6 @@ private fun Detail(
         PageId.SYSTEM_FRAMEWORK -> FrameworkPage(back)
     PageId.SYSTEM_SETTINGS -> SystemSettings(settingsApp, updateSettingsApp, deviceProfile, updateDeviceProfile, appearance, updateAppearance, openPage, onPickAppearanceLogo, onClearAppearanceLogo, back)
         PageId.DEVICE_PROFILE -> DeviceProfileEditor(deviceProfile, updateDeviceProfile, back)
-        PageId.SETTINGS_ENTRY_LABELS -> SettingsEntryLabelsPage(settingsApp, updateSettingsApp, back)
         PageId.SETTINGS_APPEARANCE_HOME -> SettingsAppearancePage(APPEARANCE_SLOT_HOME, appearance, updateAppearance, onPickAppearanceHome, onClearAppearanceHome, back)
         PageId.SETTINGS_APPEARANCE_DEVICE -> SettingsAppearancePage(APPEARANCE_SLOT_DEVICE, appearance, updateAppearance, onPickAppearanceDevice, onClearAppearanceDevice, back)
             PageId.TUTORIAL_DEVICE_CARD -> TutorialDeviceCardSettings(appearance, updateAppearance, onPickAppearanceLogo, onClearAppearanceLogo, onPickTutorialDeviceImage, onClearTutorialDeviceImage, onPickCustomDeviceLogo, onClearCustomDeviceLogo, onPickStyle1UpdateBackground, onClearStyle1UpdateBackground, onPickStyle2DeviceImage, onClearStyle2DeviceImage, onPickStyle2DeviceLogo, onClearStyle2DeviceLogo, onPickStyle2UpdateBackground, onClearStyle2UpdateBackground, onColorModeAssetAction, back)
@@ -4366,11 +3747,6 @@ private fun Detail(
         PageId.REAR_MUSIC_APPS -> RearMusicApps(musicWhitelist, updateMusicWhitelist, back)
         PageId.OTHER -> OtherPage(airDropSettings, updateAirDrop, screenRecorder, updateScreenRecorder, openPage, back)
         PageId.APP_NAVIGATION -> AppNavigationPage(back)
-        PageId.RESTART_SCOPES -> RestartScopesPage(
-            suggestedTargets = suggestedRestartTargets,
-            onRestartedTargets = onRestartedTargets,
-            back = back,
-        )
         PageId.SIMULATE_MEDIA_NOTIFICATION -> SimulateMediaNotificationPage(
             musicWhitelist,
             updateMusicWhitelist,
@@ -10446,7 +9822,6 @@ private fun UpdateAvailableDialog(
 private fun SoftwareUpdate(openPage: (PageId) -> Unit, back: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var channel by rememberSaveable { mutableStateOf("github") }
     var state by remember { mutableStateOf<UpdateState>(UpdateState.Checking) }
     var downloadId by remember { mutableStateOf<Long?>(null) }
     var downloadProgress by remember { mutableIntStateOf(0) }
@@ -10464,15 +9839,15 @@ private fun SoftwareUpdate(openPage: (PageId) -> Unit, back: () -> Unit) {
         scope.launch {
             state = withContext(Dispatchers.IO) {
                 runCatching {
-                    val info = fetchUpdateInfo(channel)
-                    val note = fetchReleaseNote(info.releaseNoteUrl)
+                    val info = fetchUpdateInfo()
+                    val note = runCatching { fetchReleaseNote(info.releaseNoteUrl) }
+                        .getOrDefault(tr("updateNotesUnavailable", "暂无更新日志"))
                     UpdateState.Ready(info, note)
                 }.getOrElse { UpdateState.Error }
             }
         }
     }
-    LaunchedEffect(channel) {
-        lastUpdateChannel = channel
+    LaunchedEffect(Unit) {
         checkUpdate()
     }
     LaunchedEffect(Unit) {
@@ -10550,13 +9925,6 @@ private fun SoftwareUpdate(openPage: (PageId) -> Unit, back: () -> Unit) {
         AppList(padding, scroll, 28) {
             item {
                 Card(Modifier.fillMaxWidth(), cornerRadius = 22.5.dp) {
-                    OverlayDropdownPreference(
-                        title = tr("更新通道", "更新通道"),
-                        items = listOf(tr("GitHub", "GitHub"), tr("Gitee", "Gitee")),
-                        selectedIndex = if (channel == "github") 0 else 1,
-                        showValueOnEnd = true,
-                        onSelectedIndexChange = { channel = if (it == 0) "github" else "gitee" },
-                    )
                     OverlayDropdownPreference(
                         title = tr("安装方式", "安装方式"),
                         items = listOf(tr("手动安装", "手动安装"), tr("静默安装", "静默安装")),
@@ -10636,7 +10004,6 @@ private fun SoftwareUpdate(openPage: (PageId) -> Unit, back: () -> Unit) {
 }
 
 private data class UpdateInfo(val versionCode: Long, val versionName: String, val releaseNoteUrl: String, val apkUrl: String, val apkSize: Long)
-private var lastUpdateChannel = "github"
 
 /** Set once the startup check resolved an answer, so it is not repeated within one process. */
 private var startupUpdateChecked = false
@@ -10740,8 +10107,8 @@ private sealed interface UpdateState {
     data class Ready(val info: UpdateInfo, val note: String) : UpdateState
 }
 
-private fun fetchUpdateInfo(channel: String): UpdateInfo {
-    val url = if (channel == "github") "https://coldp.github.io/hyperchanger-updateinfo/update.json" else "https://gitee.com/btm_m/HyperChanger/raw/main/update.json"
+private fun fetchUpdateInfo(): UpdateInfo {
+    val url = "https://raw.githubusercontent.com/ColdP/hyperchanger-updateinfo/main/update_depthwallpaper.json"
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         connectTimeout = 10_000
         readTimeout = 15_000
@@ -10801,7 +10168,7 @@ private fun UpdateLog(back: () -> Unit) {
     var note by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
             note = withContext(Dispatchers.IO) {
-            runCatching { fetchReleaseNote(fetchUpdateInfo(lastUpdateChannel).releaseNoteUrl) }.getOrNull()
+            runCatching { fetchReleaseNote(fetchUpdateInfo().releaseNoteUrl) }.getOrNull()
         }
     }
     AppPage(tr("更新日志", "更新日志"), back) { padding, scroll ->
@@ -10833,17 +10200,6 @@ private fun legalLanguage(context: Context): String {
             else -> "zh"
         }
         else -> "zh"
-    }
-}
-
-private fun setLauncherIconVisible(context: Context, visible: Boolean) {
-    runCatching {
-        context.packageManager.setComponentEnabledSetting(
-            ComponentName(context, "${BuildConfig.APPLICATION_ID}.LauncherActivity"),
-            if (visible) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            PackageManager.DONT_KILL_APP,
-        )
     }
 }
 
@@ -10950,7 +10306,7 @@ private fun About(back: () -> Unit, openPage: (PageId) -> Unit, onDebugMode: () 
         item {
             Card(Modifier.fillMaxWidth(), cornerRadius = 22.5.dp, colors = aboutCardColors()) {
                 ArrowPreference(title = tr("license", "LICENSE"), summary = tr("project_license_name", "AGPL-3.0-or-later"), onClick = { openPage(PageId.LICENSE) })
-                ArrowPreference(title = tr("githubRepository", "GitHub Repository"), summary = "github.com/ColdP/HyperChanger", onClick = { openUrl(context, "https://github.com/ColdP/HyperChanger") })
+                ArrowPreference(title = tr("githubRepository", "GitHub Repository"), summary = "github.com/ColdP/HyperChanger-Depth-Wallpaper", onClick = { openUrl(context, "https://github.com/ColdP/HyperChanger-Depth-Wallpaper") })
                 ArrowPreference(title = tr("telegramGroup", "Telegram 群组"), summary = "t.me/HyperChanger", onClick = { openUrl(context, "https://t.me/HyperChanger") })
                 ArrowPreference(title = tr("qqGroup", "QQ 群"), summary = tr("qqGroupNumber", "群号: 429188055"), onClick = { openUrl(context, "https://qm.qq.com/q/rQhbQbiYLe") })
             }
@@ -11420,7 +10776,7 @@ private fun License(back: () -> Unit) {
                     )
                     ArrowPreference(
                         title = tr("project_license_source", "查看项目源代码"),
-                        onClick = { openUrl(context, "https://github.com/ColdP/HyperChanger") },
+                        onClick = { openUrl(context, "https://github.com/ColdP/HyperChanger-Depth-Wallpaper") },
                     )
                 }
             }
