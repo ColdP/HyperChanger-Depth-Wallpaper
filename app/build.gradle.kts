@@ -17,7 +17,12 @@ val buildDate = LocalDate.now().toString().replace('-', '.')
 android {
     namespace = "btm.m.os4.systemuihook"
     compileSdk = 37
-    ndkPath = rootProject.file(".build-tmp/android-ndk-r28c").absolutePath
+    val bundledNdk = rootProject.file(".build-tmp/android-ndk-r28c")
+    if (bundledNdk.isDirectory) {
+        ndkPath = bundledNdk.absolutePath
+    } else {
+        ndkVersion = "28.2.13676358"
+    }
 
 
     defaultConfig {
@@ -95,6 +100,7 @@ dependencies {
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     implementation("io.github.proify.lyricon:subscriber:0.1.70")
     implementation("com.mocharealm.accompanist:lyrics-core:0.4.7")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("io.github.libxposed:service:102.0.0")

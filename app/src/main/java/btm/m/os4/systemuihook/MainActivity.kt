@@ -7,6 +7,12 @@ import btm.m.os4.systemuihook.newnotificationcenter.IosNotificationBottomOffsetS
 import btm.m.os4.systemuihook.newnotificationcenter.IosNotificationHeaderSettingsStore
 import btm.m.os4.systemuihook.newnotificationcenter.IosNotificationHeaderSettings
 
+import btm.m.os4.systemuihook.depthwallpaper.DepthWallpaperDownloadsPage
+import btm.m.os4.systemuihook.depthwallpaper.DepthWallpaperHistoryPage
+import btm.m.os4.systemuihook.depthwallpaper.DepthWallpaperLabPage
+import btm.m.os4.systemuihook.depthwallpaper.DepthWallpaperPreviewPage
+import btm.m.os4.systemuihook.depthwallpaper.DepthWallpaperPreviewRequest
+
 import android.app.Activity
 import android.app.DownloadManager
 import android.app.WallpaperManager
@@ -284,6 +290,7 @@ private enum class PageId {
     SETTINGS_APPEARANCE_HOME, SETTINGS_APPEARANCE_DEVICE, SETTINGS_ENTRY_LABELS, TUTORIAL_DEVICE_CARD, ABOUT, LICENSE, LANGUAGE, DONATE, OPEN, CONTRIBUTORS,
     LEGAL_DISCLAIMER, LEGAL_PRIVACY, LEGAL_USER_AGREEMENT,
     SOFTWARE_UPDATE, UPDATE_LOG, REAR_SCREEN, REAR_CUSTOM_CENTER, REAR_MUSIC_APPS, OTHER, APP_NAVIGATION, RESTART_SCOPES, DISCLAIMER, SIMULATE_MEDIA_NOTIFICATION,
+    DEPTH_WALLPAPER, DEPTH_WALLPAPER_HISTORY, DEPTH_WALLPAPER_DOWNLOAD, DEPTH_WALLPAPER_PREVIEW,
 }
 
 private data class CategorySearchItem(
@@ -450,6 +457,12 @@ private fun categorySearchItems(): List<CategorySearchItem> = listOf(
             ScopeApplication.LUCKIN_COFFEE,
         ),
         PageId.APP_NAVIGATION,
+    ),
+    CategorySearchItem(
+        tr("depthWallpaperLab", "空间壁纸实验室"),
+        tr("depthWallpaperLabSummary", "使用端侧深度模型生成可随陀螺仪呈现景深与 3D 效果的空间壁纸。"),
+        setOf(ScopeApplication.SYSTEM_UI),
+        PageId.DEPTH_WALLPAPER,
     ),
 )
 
@@ -4732,6 +4745,24 @@ private fun Detail(
         PageId.LOCKSCREEN_WIDGET_BACKGROUND -> LockscreenWidgetBackgroundSettings(settings, update, back)
         PageId.LYRIC_LIBRARY -> LyricLibraryPage(back)
         PageId.RASTER_WALLPAPER -> RasterWallpaper(settings, update, onPickRasterImages, onApplyRasterWallpaper, back)
+        PageId.DEPTH_WALLPAPER -> DepthWallpaperLabPage(
+            onOpenHistory = { openPage(PageId.DEPTH_WALLPAPER_HISTORY) },
+            onOpenDownloads = { openPage(PageId.DEPTH_WALLPAPER_DOWNLOAD) },
+            onOpenPreview = { id ->
+                DepthWallpaperPreviewRequest.projectId = id
+                openPage(PageId.DEPTH_WALLPAPER_PREVIEW)
+            },
+            back = back,
+        )
+        PageId.DEPTH_WALLPAPER_HISTORY -> DepthWallpaperHistoryPage(
+            onOpenPreview = { id ->
+                DepthWallpaperPreviewRequest.projectId = id
+                openPage(PageId.DEPTH_WALLPAPER_PREVIEW)
+            },
+            back = back,
+        )
+        PageId.DEPTH_WALLPAPER_DOWNLOAD -> DepthWallpaperDownloadsPage(back)
+        PageId.DEPTH_WALLPAPER_PREVIEW -> DepthWallpaperPreviewPage(back)
         PageId.SUPER_XIAOAI -> SuperXiaoAi(settings, superXiaoAi, updateSuperXiaoAi, back)
         PageId.CAMERA -> Camera(cameras, updateCamera, openPage, back)
         PageId.CAMERA_PALETTE -> CameraPalette(cameras, updateCamera, back)
@@ -5761,6 +5792,15 @@ private fun Shade(
         item {
             Group(tr("\u97f3\u91cf\u9762\u677f", "\u97f3\u91cf\u9762\u677f")) {
                 VolumePanelPreferences(s, update)
+            }
+        }
+        item {
+            Group(tr("depthWallpaperLab", "\u7a7a\u95f4\u58c1\u7eb8\u5b9e\u9a8c\u5ba4")) {
+                ArrowPreference(
+                    title = tr("depthWallpaperLab", "\u7a7a\u95f4\u58c1\u7eb8\u5b9e\u9a8c\u5ba4"),
+                    summary = tr("depthWallpaperLabSummary", "\u4f7f\u7528\u7aef\u4fa7\u6df1\u5ea6\u6a21\u578b\u751f\u6210\u53ef\u968f\u9640\u87ba\u4eea\u5448\u73b0\u666f\u6df1\u4e0e 3D \u6548\u679c\u7684\u7a7a\u95f4\u58c1\u7eb8\u3002"),
+                    onClick = { openPage(PageId.DEPTH_WALLPAPER) },
+                )
             }
         }
     }

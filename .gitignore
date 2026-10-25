@@ -91,6 +91,6 @@ hyperos4-glass-blur-main/
 __pycache__/
 *.py[cod]
 
-# Independent repository excludes local toolchains and vendored sources
+# Independent depth-wallpaper repository excludes local toolchains and vendored sources
 /third_party/
 
