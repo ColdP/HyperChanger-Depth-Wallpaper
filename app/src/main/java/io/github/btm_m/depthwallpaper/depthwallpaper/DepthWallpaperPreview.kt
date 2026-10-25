@@ -80,6 +80,7 @@ private const val LAYERED_SHADER = """
 uniform shader img;
 uniform shader bg;
 uniform shader dep;
+uniform shader fgDepth;
 uniform shader msk;
 uniform float2 size;
 uniform float2 parallax;
@@ -90,15 +91,27 @@ half4 main(float2 coord) {
     float d = clamp(float(dep.eval(coord).r), 0.0, 1.0);
     float2 center = size * 0.5;
     float2 p = coord - center;
-    p.x += p.y * tilt.x * 0.03;
-    p.y += p.x * tilt.y * 0.03;
-    float2 bgUv = center + p / (1.0 + 0.08 * (d - 0.5));
-    bgUv += parallax * (d - 0.5) * 0.7;
-    // Use one transform for the entire foreground, including its soft silhouette.
-    // Depth discontinuities at hair/limbs must not pull adjacent edge pixels apart.
-    float dFg = clamp(subjectDepth, 0.0, 1.0);
-    float2 fgUv = center + p / (1.0 + 0.14 * (dFg - 0.5));
-    fgUv += parallax * (dFg - 0.5) * 1.5;
+    // Translate each background depth continuously, adding mild perspective expansion.
+    float bgZoom = 1.0 + 0.13 * (d - 0.5);
+    float2 bgUv = center + p / bgZoom;
+    bgUv += parallax * (d - 0.5) * 2.1;
+
+    // Keep the cutout contour anchored to its stable mean depth, while allowing the
+    // interior to follow the original dense depth map.
+    float dFg = clamp(float(fgDepth.eval(coord).r), 0.0, 1.0);
+    float m0 = clamp(float(msk.eval(coord).r), 0.0, 1.0);
+    float edgeSupport = min(
+        min(float(msk.eval(coord + float2(5.0, 0.0)).r), float(msk.eval(coord - float2(5.0, 0.0)).r)),
+        min(float(msk.eval(coord + float2(0.0, 5.0)).r), float(msk.eval(coord - float2(0.0, 5.0)).r))
+    );
+    float interior = smoothstep(0.15, 0.9, edgeSupport) * smoothstep(0.15, 0.9, m0);
+    dFg = mix(clamp(subjectDepth, 0.0, 1.0), dFg, interior * 0.78);
+    float2 fgUv = center + p / (1.0 + 0.12 * (dFg - 0.5));
+    fgUv += parallax * (dFg - 0.5) * 2.5;
+    // A restrained depth-dependent shear simulates an oblique camera without
+    // rotating the complete image like a rigid card.
+    fgUv.x += tilt.x * (dFg - 0.5) * size.x * 0.055;
+    fgUv.y += tilt.y * (dFg - 0.5) * size.y * 0.055;
     half m = half(clamp(float(msk.eval(fgUv).r), 0.0, 1.0));
     half4 foreground = img.eval(fgUv);
     // Bitmap shaders return premultiplied colours. The mask already carries the PNG alpha;
@@ -352,15 +365,15 @@ fun BokehDepthCanvas(
 }
 
 /**
- * Layered renderer: the background plate moves with a weak depth parallax while the subject is
- * composited back with a clamped depth around its mean depth. This keeps the subject coherent and
- * prevents depth discontinuities on its silhouette.
+ * Layered renderer: depth drives continuous background and interior subject parallax; the
+ * subject's soft silhouette stays anchored to its stable mean depth.
  */
 @Composable
 fun LayeredSpatialCanvas(
     image: Bitmap,
     background: Bitmap,
     backgroundDepth: Bitmap,
+    foregroundDepth: Bitmap,
     mask: Bitmap,
     subjectDepth: Float,
     tiltProvider: () -> Offset,
@@ -379,15 +392,11 @@ fun LayeredSpatialCanvas(
     }
     val drawModifier = Modifier
         .clipToBounds()
-        .graphicsLayer {
-            val tilt = tiltProvider()
-            rotationX = -tilt.y * 2.2f
-            rotationY = tilt.x * 2.2f
-        }
         .drawWithCache {
             val imageShader = BitmapShader(image, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val backgroundShader = BitmapShader(background, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val depthShader = BitmapShader(backgroundDepth, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            val foregroundDepthShader = BitmapShader(foregroundDepth, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val maskShader = BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             val shader = RuntimeShader(LAYERED_SHADER)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -405,7 +414,7 @@ fun LayeredSpatialCanvas(
                 val left = (width - drawWidth) / 2f
                 val top = (height - drawHeight) / 2f
                 val tilt = tiltProvider()
-                val shift = min(width, height) * .05f * strength
+                val shift = min(width, height) * .08f * strength
                 matrix.reset()
                 matrix.setScale(drawWidth / imageWidth, drawHeight / imageHeight)
                 imageShader.setLocalMatrix(matrix)
@@ -415,6 +424,7 @@ fun LayeredSpatialCanvas(
                 )
                 backgroundShader.setLocalMatrix(matrix)
                 depthShader.setLocalMatrix(matrix)
+                foregroundDepthShader.setLocalMatrix(matrix)
                 maskShader.setLocalMatrix(matrix)
                 shader.setFloatUniform("size", drawWidth, drawHeight)
                 shader.setFloatUniform("parallax", tilt.x * shift, tilt.y * shift)
@@ -423,6 +433,7 @@ fun LayeredSpatialCanvas(
                 shader.setInputShader("img", imageShader)
                 shader.setInputShader("bg", backgroundShader)
                 shader.setInputShader("dep", depthShader)
+                shader.setInputShader("fgDepth", foregroundDepthShader)
                 shader.setInputShader("msk", maskShader)
                 paint.shader = shader
                 val canvas = drawContext.canvas.nativeCanvas
