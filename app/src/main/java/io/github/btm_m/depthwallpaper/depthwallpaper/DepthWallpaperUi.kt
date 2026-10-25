@@ -966,7 +966,7 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
     val tiltState = rememberSpatialTilt()
     val drag = remember(projectId) { mutableStateOf(Offset.Zero) }
     var zoomTransform by remember(projectId) { mutableStateOf(PreviewZoomTransform()) }
-    val strength = (settings.parallaxStrength / 100f).coerceIn(.2f, 1f)
+    val strength = .78f
     val backdrop = rememberLayerBackdrop()
 
     LaunchedEffect(projectId) {
@@ -1098,7 +1098,6 @@ fun DepthWallpaperPreviewPage(back: () -> Unit) {
                         image = image,
                         background = backgroundMap,
                         backgroundDepth = backgroundDepthMap,
-                        foregroundDepth = depthMap,
                         mask = maskMap,
                         subjectDepth = subjectDepth,
                         tiltProvider = tiltProvider,

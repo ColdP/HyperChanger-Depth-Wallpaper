@@ -13,16 +13,15 @@ shader = re.search(r'private const val LAYERED_SHADER = """(.*?)"""', source, re
 effect = skia.RuntimeEffect.MakeForShader(shader)
 
 
-def render(alpha, depth, foreground=None, foreground_depth=.7, tilt=(0.0, 0.0)):
+def render(alpha, depth, foreground=None):
     builder = skia.RuntimeShaderBuilder(effect)
     builder.setUniform('size', [16.0, 16.0])
     builder.setUniform('parallax', [3.0, 2.0])
-    builder.setUniform('tilt', list(tilt))
+    builder.setUniform('tilt', [0.0, 0.0])
     builder.setUniform('subjectDepth', .7)
     builder.setChild('img', foreground or skia.Shaders.Color(skia.Color4f(.8, .4, .2, alpha)))
     builder.setChild('bg', skia.Shaders.Color(skia.Color4f(.1, .3, .6, 1)))
     builder.setChild('dep', skia.Shaders.Color(skia.Color4f(depth, depth, depth, 1)))
-    builder.setChild('fgDepth', skia.Shaders.Color(skia.Color4f(foreground_depth, foreground_depth, foreground_depth, 1)))
     builder.setChild('msk', skia.Shaders.Color(skia.Color4f(alpha, alpha, alpha, 1)))
     surface = skia.Surface(16, 16)
     surface.getCanvas().drawPaint(skia.Paint(Shader=builder.makeShader()))
@@ -59,36 +58,10 @@ for displacement in [-12.0, 0.0, 12.0]:
     builder.setChild('msk', mask_shader)
     builder.setChild('bg', plate_shader)
     builder.setChild('dep', skia.Shaders.Color(skia.Color4f(.3, .3, .3, 1)))
-    builder.setChild('fgDepth', skia.Shaders.Color(skia.Color4f(.8, .8, .8, 1)))
     surface = skia.Surface(width, height)
     surface.getCanvas().drawPaint(skia.Paint(Shader=builder.makeShader()))
     rendered = surface.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType)
     assert np.all(rendered[:, :, 3] == 255)
     background_pixels = rendered[:, :, 1] > 0
     assert np.all(rendered[:, :, 2][background_pixels] >= 88)
-
-# The foreground interior follows depth while its perimeter remains anchored to the
-# common subject depth, preserving a clean silhouette and giving the subject volume.
-gradient_effect = skia.RuntimeEffect.MakeForShader('half4 main(float2 p) { return half4(p.x / 96.0, p.y / 64.0, 0.0, 1.0); }')
-gradient = skia.RuntimeShaderBuilder(gradient_effect).makeShader()
-def render_scene(fg_depth):
-    builder = skia.RuntimeShaderBuilder(effect)
-    builder.setUniform('size', [96.0, 64.0])
-    builder.setUniform('parallax', [12.0, 0.0])
-    builder.setUniform('tilt', [0.0, 0.0])
-    builder.setUniform('subjectDepth', .5)
-    builder.setChild('img', gradient)
-    builder.setChild('bg', skia.Shaders.Color(skia.Color4f(.1, .3, .6, 1)))
-    builder.setChild('dep', skia.Shaders.Color(skia.Color4f(.5, .5, .5, 1)))
-    builder.setChild('fgDepth', skia.Shaders.Color(skia.Color4f(fg_depth, fg_depth, fg_depth, 1)))
-    builder.setChild('msk', mask_shader)
-    surface = skia.Surface(96, 64)
-    surface.getCanvas().drawPaint(skia.Paint(Shader=builder.makeShader()))
-    return surface.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType)
-
-far_subject = render_scene(.2)
-near_subject = render_scene(.8)
-# Depth changes move the interior, but the edge strip remains close to the anchored pose.
-assert np.mean(np.abs(far_subject[25, 38:58, 0].astype(float) - near_subject[25, 38:58, 0].astype(float))) > 5
-assert np.mean(np.abs(far_subject[25, 28:33, 0].astype(float) - near_subject[25, 28:33, 0].astype(float))) < 2
-print('Skia shader checks passed: alpha compositing, silhouette stability, continuous subject relief, and opaque revealed backgrounds at three parallax positions')
+print('Skia shader checks passed: alpha compositing, foreground continuity, and opaque revealed backgrounds at three parallax positions')
