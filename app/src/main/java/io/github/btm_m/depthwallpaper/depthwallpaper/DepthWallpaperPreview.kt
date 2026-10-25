@@ -94,11 +94,17 @@ half4 main(float2 coord) {
     p.y += p.x * tilt.y * 0.03;
     float2 bgUv = center + p / (1.0 + 0.08 * (d - 0.5));
     bgUv += parallax * (d - 0.5) * 0.7;
-    float dFg = clamp(subjectDepth + (d - subjectDepth) * 0.38, 0.0, 1.0);
+    // Use one transform for the entire foreground, including its soft silhouette.
+    // Depth discontinuities at hair/limbs must not pull adjacent edge pixels apart.
+    float dFg = clamp(subjectDepth, 0.0, 1.0);
     float2 fgUv = center + p / (1.0 + 0.14 * (dFg - 0.5));
     fgUv += parallax * (dFg - 0.5) * 1.5;
     half m = half(clamp(float(msk.eval(fgUv).r), 0.0, 1.0));
-    return mix(bg.eval(bgUv), img.eval(fgUv), m);
+    half4 foreground = img.eval(fgUv);
+    // Bitmap shaders return premultiplied colours. The mask already carries the PNG alpha;
+    // multiplying it into premultiplied RGB again darkens semi-transparent edges.
+    foreground = half4(foreground.rgb / max(foreground.a, half(0.0001)), 1.0);
+    return mix(bg.eval(bgUv), foreground, m);
 }
 """
 

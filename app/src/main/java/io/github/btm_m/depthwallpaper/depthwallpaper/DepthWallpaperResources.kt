@@ -279,31 +279,9 @@ class MattingEstimator {
     }
 
     private fun buildMask(values: FloatArray, size: Int, model: MattingModel): Bitmap? {
-        var low = Float.MAX_VALUE
-        var high = -Float.MAX_VALUE
-        for (value in values) {
-            if (value < low) low = value
-            if (value > high) high = value
-        }
-        val range = (high - low).takeIf { it > 1e-6f } ?: 1f
-        val normalized = FloatArray(values.size) { ((values[it] - low) / range).coerceIn(0f, 1f) }
-        val mask = if (model == MattingModel.U2NETP) {
-            // Preserve the original U2Netp cleanup. High-resolution models keep soft edges
-            // and separate foreground components, including fine hair and small objects.
-            val binary = BooleanArray(normalized.size) { normalized[it] > .45f }
-            val largest = largestComponent(binary, size, size)
-            FloatArray(normalized.size) { index ->
-                if (largest != null && !largest[index]) 0f else normalized[index]
-            }
-        } else {
-            normalized
-        }
-        if (model == MattingModel.U2NETP) {
-            var foreground = 0
-            for (value in mask) if (value > .35f) foreground++
-            if (foreground < normalized.size / 25) return null
-            repeat(2) { boxBlur(mask, size, size) }
-        }
+        // U2Netp follows its original output normalization, but keeps continuous edges.
+        // ISNet/BiRefNet already produce probabilities; avoid amplifying low-confidence noise.
+        val mask = MattingEdges.probabilities(values, normalize = model == MattingModel.U2NETP)
         val pixels = IntArray(mask.size)
         for (index in pixels.indices) {
             val value = (mask[index] * 255f).roundToInt().coerceIn(0, 255)
@@ -314,68 +292,6 @@ class MattingEstimator {
         return bitmap
     }
 
-    private fun largestComponent(binary: BooleanArray, width: Int, height: Int): BooleanArray? {
-        val visited = BooleanArray(binary.size)
-        var best: BooleanArray? = null
-        var bestSize = 0
-        val queue = IntArray(binary.size)
-        for (start in binary.indices) {
-            if (!binary[start] || visited[start]) continue
-            var head = 0
-            var tail = 0
-            queue[tail++] = start
-            visited[start] = true
-            var count = 0
-            while (head < tail) {
-                val index = queue[head++]
-                count++
-                val x = index % width
-                val y = index / width
-                for (dy in -1..1) {
-                    val ny = y + dy
-                    if (ny !in 0 until height) continue
-                    for (dx in -1..1) {
-                        val nx = x + dx
-                        if (nx !in 0 until width) continue
-                        val next = ny * width + nx
-                        if (binary[next] && !visited[next]) {
-                            visited[next] = true
-                            queue[tail++] = next
-                        }
-                    }
-                }
-            }
-            if (count > bestSize) {
-                bestSize = count
-                val component = BooleanArray(binary.size)
-                for (position in 0 until tail) component[queue[position]] = true
-                best = component
-            }
-        }
-        return best
-    }
-
-    private fun boxBlur(values: FloatArray, width: Int, height: Int) {
-        val temp = FloatArray(values.size)
-        for (y in 0 until height) {
-            val row = y * width
-            for (x in 0 until width) {
-                val left = if (x > 0) values[row + x - 1] else values[row + x]
-                val center = values[row + x]
-                val right = if (x < width - 1) values[row + x + 1] else values[row + width - 1]
-                temp[row + x] = (left + center + right) / 3f
-            }
-        }
-        for (y in 0 until height) {
-            val row = y * width
-            for (x in 0 until width) {
-                val up = if (y > 0) temp[row - width + x] else temp[x]
-                val center = temp[row + x]
-                val down = if (y < height - 1) temp[row + width + x] else temp[(height - 1) * width + x]
-                values[row + x] = (up + center + down) / 3f
-            }
-        }
-    }
 }
 
 object DepthMatting {

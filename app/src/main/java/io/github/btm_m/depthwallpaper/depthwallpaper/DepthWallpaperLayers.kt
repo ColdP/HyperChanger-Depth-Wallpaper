@@ -60,9 +60,12 @@ object DepthLayerBuilder {
             depthValues[index] = (depthPixels[index] and 0xFF) / 255f
         }
         val alphaMask = alphaMask(sourceLayer, width, height)
-        val matting = mattingMask?.let { scaleMatting(it, width, height, preserveMattingEdges) }
+        val matting = if (alphaMask == null) {
+            mattingMask?.let { scaleMatting(it, sourceLayer, width, height, preserveMattingEdges) }
+        } else null
         val mask = alphaMask ?: matting ?: depthDerivedMask(depthValues, width, height)
-        if (alphaMask != null || matting == null || !preserveMattingEdges) softenMask(mask, width, height)
+        // Original alpha and refined model edges must not be blurred a second time.
+        if (alphaMask == null && matting == null) softenMask(mask, width, height)
         var sum = 0f
         var count = 0
         for (index in 0 until pixelCount) {
@@ -89,7 +92,7 @@ object DepthLayerBuilder {
         return DepthLayers(maskBitmap, background, subjectDepth, alphaMask != null)
     }
 
-    private fun scaleMatting(source: Bitmap, width: Int, height: Int, preserveEdges: Boolean): FloatArray? {
+    private fun scaleMatting(source: Bitmap, image: Bitmap, width: Int, height: Int, preserveEdges: Boolean): FloatArray? {
         if (source.width < 2 || source.height < 2) return null
         val scaled = if (source.width == width && source.height == height) {
             source
@@ -99,19 +102,11 @@ object DepthLayerBuilder {
         val pixels = IntArray(width * height)
         scaled.getPixels(pixels, 0, width, 0, 0, width, height)
         if (scaled !== source) scaled.recycle()
-        val values = FloatArray(width * height) { index ->
-            val value = (pixels[index] and 0xFF) / 255f
-            if (preserveEdges) value else if (value > .4f) 1f else 0f
-        }
-        // Keep the high-resolution models' soft edges and small foreground details.
-        if (preserveEdges) return values
-        morph(values, width, height, dilate = true)
-        morph(values, width, height, dilate = false)
-        var foreground = 0
-        for (value in values) if (value > .5f) foreground++
-        if (foreground < values.size / 40) return null
-        softenMask(values, width, height)
-        return values
+        val values = FloatArray(width * height) { index -> (pixels[index] and 0xFF) / 255f }
+        val imagePixels = IntArray(width * height)
+        image.getPixels(imagePixels, 0, width, 0, 0, width, height)
+        val radius = if (preserveEdges) 2 else (max(width, height) / 240).coerceIn(2, 8)
+        return MattingEdges.refine(values, imagePixels, width, height, radius)
     }
 
     private fun alphaMask(sourceLayer: Bitmap, width: Int, height: Int): FloatArray? {
@@ -256,6 +251,9 @@ object DepthLayerBuilder {
      * the filled plate with the untouched background region.
      */
     private fun buildBackground(sourceLayer: Bitmap, mask: FloatArray, width: Int, height: Int): Bitmap {
+        val removalMask = MattingEdges.backgroundRemovalMask(
+            mask, width, height, (max(width, height) / 240).coerceIn(4, 8),
+        )
         val smallWidth = max(2, width / INPAINT_SCALE)
         val smallHeight = max(2, height / INPAINT_SCALE)
         val small = sourceLayer.scale(smallWidth, smallHeight)
@@ -268,7 +266,7 @@ object DepthLayerBuilder {
             val sourceY = (y.toFloat() / smallHeight * height).toInt().coerceIn(0, height - 1)
             for (x in 0 until smallWidth) {
                 val sourceX = (x.toFloat() / smallWidth * width).toInt().coerceIn(0, width - 1)
-                smallMask[y * smallWidth + x] = mask[sourceY * width + sourceX]
+                smallMask[y * smallWidth + x] = removalMask[sourceY * width + sourceX]
             }
         }
         val r = FloatArray(smallCount)
@@ -280,7 +278,7 @@ object DepthLayerBuilder {
             r[index] = ((color shr 16) and 0xFF).toFloat()
             g[index] = ((color shr 8) and 0xFF).toFloat()
             b[index] = (color and 0xFF).toFloat()
-            known[index] = smallMask[index] < .35f
+            known[index] = smallMask[index] < .01f
         }
         val knownCount = known.count { it }
         if (knownCount == 0) {
@@ -371,7 +369,7 @@ object DepthLayerBuilder {
         sourceLayer.getPixels(sourcePixels, 0, width, 0, 0, width, height)
         val output = IntArray(width * height)
         for (index in output.indices) {
-            val t = mask[index].coerceIn(0f, 1f)
+            val t = removalMask[index]
             val foreground = sourcePixels[index]
             val fill = upPixels[index]
             val fr = (foreground shr 16) and 0xFF

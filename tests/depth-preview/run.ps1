@@ -11,3 +11,7 @@ $annotations = Get-ChildItem -LiteralPath $gradleLib -Filter 'annotations-*.jar'
 if ($LASTEXITCODE -ne 0) { throw 'Preview zoom checks failed to compile.' }
 & java "-Djava.io.tmpdir=$output" -cp "$output\classes;$stdlib" io.github.btm_m.depthwallpaper.depthwallpaper.PreviewZoomTransformTestKt
 if ($LASTEXITCODE -ne 0) { throw 'Preview zoom checks failed.' }
+& java "-Djava.io.tmpdir=$output" -cp "$gradleLib\*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -classpath "$stdlib;$annotations" -d "$output\matting-classes" "$project\app\src\main\java\io\github\btm_m\depthwallpaper\depthwallpaper\MattingEdges.kt" "$PSScriptRoot\MattingEdgesTest.kt"
+if ($LASTEXITCODE -ne 0) { throw 'Matting edge checks failed to compile.' }
+& java "-Djava.io.tmpdir=$output" -cp "$output\matting-classes;$stdlib" io.github.btm_m.depthwallpaper.depthwallpaper.MattingEdgesTestKt "$output\matting-edges.png"
+if ($LASTEXITCODE -ne 0) { throw 'Matting edge checks failed.' }

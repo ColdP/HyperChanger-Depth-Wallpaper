@@ -50,7 +50,8 @@ Build the `main` branch to try spatial wallpapers.
 
 - Transparent artwork uses its Alpha channel as the initial foreground mask
 - Subject matting is always enabled; select U2Netp, ISNet INT8 or BiRefNet Lite INT8 only from the Generate tab's Matting model dropdown
-- Subject depth is constrained around its mean so silhouette edges do not tear
+- Continuous masks follow image edges while retaining soft contours and separate small subjects; transparent images keep their original Alpha
+- Subject and silhouette share one parallax transform so depth discontinuities do not tear edges
 - A background plate plus soft-mask compositing keeps the subject moving as a whole instead of sliding pixel by pixel
 - Weak background parallax and stronger subject parallax produce a limited, stable spatial change
 
@@ -108,6 +109,7 @@ Windows:
 - Depth and matting models run entirely on device; images are never uploaded.
 - Generated results live in the app's private storage: original, depth map, mask, background plate and thumbnail.
 - Deleting a downloaded model does not affect existing history; regenerate an old entry to obtain layered data.
+- Mask edge and background-fill improvements apply to newly generated projects; regenerate existing entries to use them.
 - Licensed under AGPL-3.0-or-later.
 
 ## Acknowledgements
