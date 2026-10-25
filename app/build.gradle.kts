@@ -15,18 +15,12 @@ val releaseKeyPassword = providers.gradleProperty("releaseKeyPassword").orNull
 val buildDate = LocalDate.now().toString().replace('-', '.')
 
 android {
-    namespace = "btm.m.os4.systemuihook"
+    namespace = "io.github.btm_m.depthwallpaper"
     compileSdk = 37
-    val bundledNdk = rootProject.file(".build-tmp/android-ndk-r28c")
-    if (bundledNdk.isDirectory) {
-        ndkPath = bundledNdk.absolutePath
-    } else {
-        ndkVersion = "28.2.13676358"
-    }
 
 
     defaultConfig {
-        applicationId = "btm.m.os4.systemuihook"
+        applicationId = "io.github.btm_m.depthwallpaper"
         minSdk = 35
         targetSdk = 37
         versionCode = 1020101
@@ -34,13 +28,6 @@ android {
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         ndk { abiFilters += "arm64-v8a" }
 
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     signingConfigs {
@@ -72,8 +59,11 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Prebuilt native dependencies are packaged without invoking the NDK.
+            keepDebugSymbols += "**/*.so"
+        }
         resources {
-            merges += "META-INF/xposed/*"
             excludes += "**"
         }
     }
@@ -96,12 +86,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.graphics:graphics-shapes:1.1.0")
     implementation("com.google.zxing:core:3.5.3")
-    implementation("org.luckypray:dexkit:2.2.0")
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
-    implementation("io.github.proify.lyricon:subscriber:0.1.70")
-    implementation("com.mocharealm.accompanist:lyrics-core:0.4.7")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
-    compileOnly("io.github.libxposed:api:102.0.0")
+    // Retained for the unchanged Settings page's connection status and stored preferences.
     implementation("io.github.libxposed:service:102.0.0")
 }

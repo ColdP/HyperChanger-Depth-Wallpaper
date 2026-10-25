@@ -1,6 +1,5 @@
 <resources>
     <string name="raster_wallpaper_description">光栅壁纸</string>
-    <string name="app_name">HyperChanger</string>
-    <!-- Shown as the module description in the LSPosed module list. -->
-    <string name="xposed_description" translatable="false">Shape HyperOS your way.</string>
+    <string name="app_name">空间壁纸实验室</string>
+    <string name="app_description">使用本机深度与抠图模型，让照片呈现空间效果。</string>
 </resources>

@@ -32,10 +32,10 @@ HyperChanger Depth Wallpaper is a standalone branch of [HyperChanger](https://gi
 
 ## Branches
 
-- `main`: base HyperChanger app without the Spatial Wallpaper Lab entry point.
-- `depth-wallpaper`: the Spatial Wallpaper Lab branch with everything described below.
+- `main`: includes the merged Spatial Wallpaper Lab and all features described below.
+- `depth-wallpaper`: the original Spatial Wallpaper Lab feature branch, now merged into `main`.
 
-Build the `depth-wallpaper` branch to try spatial wallpapers.
+Build the `main` branch to try spatial wallpapers.
 
 ## Features
 
@@ -49,7 +49,7 @@ Build the `depth-wallpaper` branch to try spatial wallpapers.
 ### Subject mask and layered rendering
 
 - Transparent artwork uses its Alpha channel as the initial foreground mask
-- Regular photos use a depth-derived soft mask, with an optional lightweight U2Netp matting model
+- Subject matting is always enabled; select U2Netp, ISNet INT8 or BiRefNet Lite INT8 only from the Generate tab's Matting model dropdown
 - Subject depth is constrained around its mean so silhouette edges do not tear
 - A background plate plus soft-mask compositing keeps the subject moving as a whole instead of sliding pixel by pixel
 - Weak background parallax and stronger subject parallax produce a limited, stable spatial change
@@ -57,7 +57,7 @@ Build the `depth-wallpaper` branch to try spatial wallpapers.
 ### Preview and interaction
 
 - Gyroscope-driven parallax with a subtle 3D tilt; drag to preview on devices without a sensor
-- Double tap to reset the view
+- Pinch to zoom from 1× to 4× and drag to inspect details; double tap to reset zoom and viewpoint
 - Render modes: original image / depth map / parallax only / depth of field / final composite
 - Generation history: one card per project, tap a card to open the full-screen preview
 
@@ -71,14 +71,18 @@ Resources are hosted on GitHub Pages: <https://coldp.github.io/hyperchanger-upda
 | MiDaS Mobile | ~63 MB | Faster, great for quick previews |
 | Depth Anything 3 Base | ~99 MB | Best quality, noticeably slower |
 | U2Netp Matting | ~4.4 MB | Optional lightweight matting model |
+| ISNet INT8 | ~42.2 MB | 1024 resolution, balancing edges and speed |
+| BiRefNet Lite INT8 | ~86.6 MB | Complex outlines and detail; higher memory use and generation time |
 
 ## Usage
 
-1. Open HyperChanger and go to "System UI and material adjustments".
-2. Scroll to the bottom and open "Spatial Wallpaper Lab".
-3. Download a model from "Resources"; Depth Anything V2 Small is a good default.
-4. Choose an image and tap "Generate spatial effect".
-5. When generation finishes, tap the card to open the full-screen preview and tilt the phone.
+1. Open the app directly into Spatial Wallpaper Lab.
+2. Download depth and matting models from the Models tab; Depth Anything V2 Small and U2Netp are good defaults.
+3. Return to Generate, choose an image and models, then tap "Generate spatial effect".
+4. Open the full-screen preview and tilt the phone.
+5. Use the History tab to view, preview or delete generated projects.
+
+The bottom navigation contains Generate, History, Models and Settings. Generation and model downloads continue when switching tabs.
 
 ## Build
 
@@ -86,7 +90,7 @@ Resources are hosted on GitHub Pages: <https://coldp.github.io/hyperchanger-upda
 - compileSdk 37, minSdk 35, targetSdk 37
 - `arm64-v8a` only
 - ONNX Runtime Android 1.31.0
-- NDK 28.2.13676358; if `.build-tmp/android-ndk-r28c` exists in the project root, the build uses that local NDK first
+- No NDK installation required
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -100,6 +104,7 @@ Windows:
 
 ## Notes
 
+- Hook implementations and registration entries unrelated to spatial wallpapers have been removed. Settings and its secondary pages remain unchanged; legacy module features no longer inject into the system.
 - Depth and matting models run entirely on device; images are never uploaded.
 - Generated results live in the app's private storage: original, depth map, mask, background plate and thumbnail.
 - Deleting a downloaded model does not affect existing history; regenerate an old entry to obtain layered data.

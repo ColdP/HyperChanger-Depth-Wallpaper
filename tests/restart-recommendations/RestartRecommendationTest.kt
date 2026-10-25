@@ -1,4 +1,4 @@
-package btm.m.os4.systemuihook
+package io.github.btm_m.depthwallpaper
 
 import android.content.SharedPreferences
 import java.lang.reflect.Proxy
